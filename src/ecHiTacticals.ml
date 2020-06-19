@@ -187,8 +187,8 @@ and process1_phl (_ : ttenv) (t : phltactic located) (tc : tcenv1) =
     | Papp info                 -> EcPhlApp.process_app info
     | Pwp (wp,cost_pre)         -> EcPhlWp.process_wp wp cost_pre
     | Psp sp                    -> EcPhlSp.t_sp sp
-    | Prcond (side, b, i)       -> EcPhlRCond.t_rcond side b i
-    | Pcond side                -> EcPhlHiCond.process_cond side
+    | Prcond (side, b, i, c)    -> EcPhlRCond.process_rcond side b i c
+    | Pcond info                -> EcPhlHiCond.process_cond info
     | Pwhile (side, info)       -> EcPhlWhile.process_while side info
     | Pasyncwhile info          -> EcPhlWhile.process_async_while info
     | Pfission info             -> EcPhlLoopTx.process_fission info
