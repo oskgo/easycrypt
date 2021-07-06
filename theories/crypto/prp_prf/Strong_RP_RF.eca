@@ -23,7 +23,9 @@ type K.
 op dK: { K distr | is_lossless dK } as dK_ll.
 
 clone import PRP as PRPt with
-  type D  <- D.
+  type D       <- D,
+  type d_in_t  <- unit,
+  type d_out_t <- bool.
 
 clone import StrongPRP as PRPSec.
 

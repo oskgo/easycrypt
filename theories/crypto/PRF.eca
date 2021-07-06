@@ -23,17 +23,21 @@ module type PRF_Oracles = {
   proc f(_: D): R
 }.
 
+(** We generalize over distinguishers to allow some flexibility.
+    In general, we'd expect d_in_t to be unit, and d_out_t to be bool **)
+type d_in_t, d_out_t.
+
 module type Distinguisher (F : PRF_Oracles) = {
-  proc distinguish(): bool
+  proc distinguish(_ : d_in_t): d_out_t
 }.
 
 module IND (F : PRF) (D : Distinguisher) = {
-  proc main(): bool = {
-    var b;
+  proc main(x : d_in_t): d_out_t = {
+    var r;
 
          F.init();
-    b <@ D(F).distinguish();
-    return b;
+    r <@ D(F).distinguish(x);
+    return r;
   }
 }.
 
@@ -52,8 +56,9 @@ module RF = {
 
   proc f(x:D): R = {
     var r;
+
+    r <$ dR x;
     if (x \notin m) {
-      r <$ dR x;
       m.[x]  <- r;
     }
     return (oget m.[x]);
@@ -88,7 +93,7 @@ module PseudoRF = {
 module PRF = {
   var k : K
 
-  proc init() = { k <$ dK; }
+  proc init()  = { k <$ dK; }
   proc f(x: D) = { return F k x; }
 }.
 end PseudoRF.

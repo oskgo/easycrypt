@@ -22,7 +22,9 @@ axiom bijectiveP k:
 
 (* Import definitions to consider (P,Pinv) as a weak PRP *)
 clone import PRP as PRPt with
-  type D    <- block.
+  type D       <- block,
+  type d_in_t  <- unit,
+  type d_out_t <- bool.
 
 clone import WeakPRP as PRPSec.
 

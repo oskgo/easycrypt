@@ -14,6 +14,8 @@ pragma +implicits.
     keyspace K equipped with a (lossless) distribution dK. **)
 type D.
 
+type d_in_t, d_out_t.
+
 (** Security notions **)
 (* -------------------------------------------------------------------- *)
 abstract theory WeakPRP.
@@ -27,16 +29,16 @@ module type PRP_Oracles = {
 }.
 
 module type Distinguisher (P : PRP_Oracles) = {
-  proc distinguish(): bool
+  proc distinguish(_ : d_in_t): d_out_t
 }.
 
 module IND (P : PRP) (D:Distinguisher) = {
-  proc main(): bool = {
-    var b;
+  proc main(x : d_in_t): d_out_t = {
+    var r;
 
          P.init();
-    b <@ D(P).distinguish();
-    return b;
+    r <@ D(P).distinguish(x);
+    return r;
   }
 }.
 end WeakPRP.
@@ -55,16 +57,16 @@ module type SPRP_Oracles = {
 }.
 
 module type Distinguisher (P : SPRP_Oracles) = {
-  proc distinguish(): bool
+  proc distinguish(_ : d_in_t): d_out_t
 }.
 
 module IND (P : PRP) (D:Distinguisher) = {
-  proc main(): bool = {
-    var b;
+  proc main(x : d_in_t): d_out_t = {
+    var r;
 
          P.init();
-    b <@ D(P).distinguish();
-    return b;
+    r <@ D(P).distinguish(x);
+    return r;
   }
 }.
 end StrongPRP.
@@ -252,8 +254,10 @@ lemma dD_uni: is_uniform dD.
 proof. exact/funi_uni/dD_funi. qed.
 
 clone import PRF as PRFt with
-  type D <- D,
-  type R <- D.
+  type D       <- D,
+  type R       <- D,
+  type d_in_t  <- unit,
+  type d_out_t <- bool.
 
 clone import RF as PRFi with
   op   dR _ <- dD
@@ -460,30 +464,33 @@ section Upto.
            PRP_indirect_bad.bad{1} <=> collision PRFi.m{2}).
   + exact D_ll.
   + proc.
-    if=> //=; inline *.
-    swap{1} 1.
+    if {1}; last first.
+    + rcondf {2} 2; first by auto.
+      by auto; rewrite dD_ll.
+    rcondt {2} 2; first by auto.
+    inline *; swap{1} 1.
     seq  1  2: (={x} /\
                 x{1} \notin RP.m{1} /\
                 PRFi.m{2} = RP.m.[x <- r0]{1} /\
                 ((PRP_indirect_bad.bad \/ rng RP.m r0){1} <=> collision PRFi.m{2})).
     + auto => /> &1 &2 coll _ x_notin_m r _; split=> [|x0 x'].
       + rewrite rngE /= /collision=> - [x'] mx'; exists x{2} x'; smt(domE get_setE).
-      smt (rngE get_setE).
+      smt(rngE get_setE).
     sp; if{1}.
     + conseq (_: _ ==> collision PRFi.m{2} /\ PRP_indirect_bad.bad{1})=> //.
-      auto=> /> &1 &2 x_notin_m coll_def rng_m_r; smt.
-    by auto; smt. (** FIXME: Investigate **)
-    move=> &2 bad; conseq (_: true ==> true: =1%r) (_: PRP_indirect_bad.bad ==> PRP_indirect_bad.bad)=> //=.
+      by auto=> /> &1 &2 x_notin_m coll_def rng_m_r; smt(get_setE excepted_lossless).
+    by auto=> /#.
+  + move=> &2 bad; conseq (_: true ==> true: =1%r) (_: PRP_indirect_bad.bad ==> PRP_indirect_bad.bad)=> //=.
     + by proc; if=> //=; inline *; seq  2: PRP_indirect_bad.bad; [auto|if=> //=; auto].
-    proc; if=> //=; inline *.
+  + proc; if=> //=; inline *.
     seq  2: (X = rng RP.m /\ x \notin RP.m) 1%r 1%r 0%r _=> //=;
          [auto|if=> //=; auto|hoare; auto]=> />;rewrite ?dD_ll //.
     by move=> &hr x_notin_m r_in_rng_m; apply excepted_lossless; exists x{hr}.
-    move=> &1; conseq (_: collision PRFi.m ==> collision PRFi.m: =1%r)=> //=.
-    by proc; if; auto=> />; rewrite dD_ll //=; smt(domE get_setE).
+  + move=> &1; conseq (_: collision PRFi.m ==> collision PRFi.m: =1%r)=> //=.
+    by proc; auto=> />; rewrite dD_ll //=; smt(domE get_setE).
   inline *; auto=> />; split=> [|_].
   + by rewrite no_collision=> x x'; rewrite mem_empty.
-  move=> /> rL rR DL b mL DR mR [-> //| /#].
+  by move=> /> rL rR DL b mL DR mR [-> //| /#].
   qed.
 end section Upto.
 
@@ -600,16 +607,20 @@ section CollisionProbability.
            size Sample.l{1} = card (fdom PRFi.m){2} /\
            (forall x, mem (frng PRFi.m) x <=> mem Sample.l x){1} /\
            (collision PRFi.m{2} <=> !uniq Sample.l{1})).
-  + proc; inline*.
-    if => //=.
-    auto => /> &1 &2 h1 h2 h3 h4 r _.
-    rewrite fdom_set fcardUI_indep 2:fcard1; 1: by rewrite fsetI1 mem_fdom h4. 
-    smt (get_setE mem_frng rngE collision_add).
+  + proc; inline *.
+    if {1}; last first.
+    + by rcondf {2} 2; auto; rewrite dD_ll.
+    auto=> /> &1 &2 h1 h2 h3 h4 r _.
+    rewrite fdom_set fcardUI_indep 2:fcard1; 1:by rewrite fsetI1 mem_fdom h4.
+    split=> [/#|].
+    split; first by move=> d; rewrite mem_frng rngE //=; split; smt(get_setE mem_frng).
+    split; first by rewrite -h2 mem_frng; smt(get_setE).
+    by rewrite negb_and -h3 -h2 //=; smt(mem_frng collision_add).
   auto; smt (size_eq0 fdom0 fcards0 frng0 in_fset0 mem_empty).
   qed.
 
   local hoare IND_bounded : IND(PRFi,D).main : true ==> card (fdom PRFi.m) <= q.
-  proof. proc; call D_bounded; inline *;auto. qed.
+  proof. by proc; call D_bounded; inline *; auto. qed.
 
   lemma pr_PRFi_collision &m:
     Pr[IND(PRFi,D).main() @ &m: collision PRFi.m]
@@ -620,14 +631,14 @@ section CollisionProbability.
     symmetry; proc *; inline Exp(Sample, A).main.
     by call IND_Exp; inline *; auto => /#.
   apply (pr_collision A A_ll _ &m).
-  conseq IND_Exp IND_bounded => /#.
+  by conseq IND_Exp IND_bounded => /#.
   qed.
 
   lemma Conclusion &m:
     `|Pr[IND(RP, D).main() @ &m: res]- Pr[IND(PRFi,D).main() @ &m: res]|
       <= (q*(q-1))%r/2%r * mu1 dD witness.
   proof.
-    move: (pr_PRPi_PRPi'_Indirect D &m) (pr_PRPi'_Indirect_PRFi D D_ll &m) (pr_PRFi_collision &m) => /#.
+  by move: (pr_PRPi_PRPi'_Indirect D &m) (pr_PRPi'_Indirect_PRFi D D_ll &m) (pr_PRFi_collision &m) => /#.
   qed.
 
 end section CollisionProbability.
@@ -670,17 +681,16 @@ qed.
 
 hoare DBounder_card : DBounder(D, PRFi).distinguish : PRFi.m = empty ==> card (fdom PRFi.m) <= q.
 proof.
-  proc.
-  call (: card (fdom PRFi.m) <= FBounder.c /\ FBounder.c <= q).
+  proc; call (: card (fdom PRFi.m) <= FBounder.c /\ FBounder.c <= q).
   + proc; sp; if => //.
-    inline *; sp; wp; if; auto; smt(fdom_set fcardU fcard1 fcard_ge0).
-  auto; smt(fdom0 fcards0 ge0_q).
+    by inline *; auto; smt(fdom_set fcardU fcard1 fcard_ge0).
+  by auto; smt(fdom0 fcards0 ge0_q).
 qed.
 
 lemma Conclusion_DBounder &m:
   `|Pr[IND(RP, DBounder(D)).main() @ &m: res]- Pr[IND(PRFi,DBounder(D)).main() @ &m: res]|
      <= (q*(q-1))%r/2%r * mu1 dD witness.
-proof. apply (Conclusion (DBounder(D)) DBounder_ll DBounder_card &m). qed.
+proof. by apply (Conclusion (DBounder(D)) DBounder_ll DBounder_card &m). qed.
 
 end section BOUNDER.
 
@@ -722,8 +732,8 @@ module PseudoRP = {
 module PRP = {
   var k : K
 
-  proc init() = { k <$ dK; }
-  proc f(x : D) = { return p k x; }
+  proc init()    = { k <$ dK; }
+  proc f(x : D)  = { return p k x; }
   proc fi(x : D) = { return pi k x; }  
 }.
 
