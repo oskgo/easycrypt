@@ -197,8 +197,8 @@ rewrite fcardD fcardUI_indep.
 rewrite fcard1 fsetIUl fcardUI_indep.
 + by apply/fsetP=> x'; rewrite !inE mem_fdom /#.
 have ->: card (fset1 x `&` frng m) = if x \in (frng m) then 1 else 0.
-+ smt (@FSet).
-by move: x_notin_m; rewrite -mem_fdom; smt (leq_card_rng_dom @FSet).
++ smt(@FSet).
+by move: x_notin_m; rewrite -mem_fdom; smt(leq_card_rng_dom @FSet).
 qed.
 
 lemma f_ll: is_full dD => islossless RP.f.
@@ -349,7 +349,7 @@ module PRPi'(S:Sample_t) = {
   }
 }.
 
-lemma nosmt notin_supportIP (P : 'a -> bool) (d : 'a distr):
+lemma notin_supportIP (P : 'a -> bool) (d : 'a distr):
   (exists a, support d a /\ !P a) <=> mu d P < mu d predT.
 proof.
 rewrite (@mu_split _ predT P) /predI /predT /predC /=.
@@ -616,7 +616,7 @@ section CollisionProbability.
     split; first by move=> d; rewrite mem_frng rngE //=; split; smt(get_setE mem_frng).
     split; first by rewrite -h2 mem_frng; smt(get_setE).
     by rewrite negb_and -h3 -h2 //=; smt(mem_frng collision_add).
-  auto; smt (size_eq0 fdom0 fcards0 frng0 in_fset0 mem_empty).
+  auto; smt(size_eq0 fdom0 fcards0 frng0 in_fset0 mem_empty).
   qed.
 
   local hoare IND_bounded : IND(PRFi,D).main : true ==> card (fdom PRFi.m) <= q.
