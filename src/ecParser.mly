@@ -1366,6 +1366,9 @@ type_exp:
 
 (* -------------------------------------------------------------------- *)
 (* Parameter declarations                                              *)
+typed_anons:
+| UNDERSCORE COLON ty=loc(type_exp)
+   { ty }
 
 typed_vars:
 | xs=ident+ COLON ty=loc(type_exp)
@@ -1380,6 +1383,9 @@ param_decl:
 
 | LPAREN UNDERSCORE COLON ty=loc(type_exp) RPAREN
     { Fparams_imp ty }
+
+| LPAREN aout=loc(plist2(typed_anons, COMMA)) RPAREN
+    { Fparams_imp (mk_loc (loc aout) (PTtuple (unloc aout))) }
 
 (* -------------------------------------------------------------------- *)
 (* Statements                                                           *)
