@@ -470,8 +470,8 @@ have -> : inv Nenc%r * `|Pr[CCA_L(S, A).main() @ &m : res] - Pr[CCA_R(S, A).main
           `| (Pr[ CCA_L(S, A).main() @ &m : res ] - Pr[ CCA_R(S, A).main() @ &m : res]) / Nenc%r |.
 smt(Nenc_gt0).
 rewrite CCA_Ln CCA_Rn.
-have /= H := Hyb.Hybrid_restr Ob A' A'_call Obl_ll orclL_ll orclR_ll A'_ll &m (fun _ _ _ r => r).
-rewrite -H; clear H.
+have /= H := Hyb.Hybrid_restr_div Ob A' A'_call Obl_ll orclL_ll orclR_ll A'_ll &m (fun _ _ _ r => r).
+rewrite -H; clear H; 1:smt(Nenc_gt0).
 have <- : Pr[CCA_(S, B(S, A), L).main() @ &m : res] = Pr[Hyb.HybGame(A', Ob, Hyb.L(Ob)).main() @ &m : res].
   byequiv => //; proc; inline *; auto.
   swap{2} 1 5; swap{1} 6 2; sp.
@@ -489,7 +489,7 @@ have <- : Pr[CCA_(S, B(S, A), L).main() @ &m : res] = Pr[Hyb.HybGame(A', Ob, Hyb
     + sp. rcondt{1} 1. move => &m1; skip => /> /#.
       by auto; call(: true); skip => />.
     + by auto; skip => />.
-  by wp; rnd; auto; call(: true); skip => &m1 &m2 />.
+  wp; rnd; auto; call(: true); skip => &m1 &m2 />; smt(supp_dinter Nenc_gt0).
 have <- : Pr[CCA_(S, B(S, A), R).main() @ &m : res] = Pr[Hyb.HybGame(A', Ob, Hyb.R(Ob)).main() @ &m : res].
   byequiv => //; proc; inline *; auto.
   swap{2} 1 5; swap{1} 6 2; sp.
@@ -507,7 +507,7 @@ have <- : Pr[CCA_(S, B(S, A), R).main() @ &m : res] = Pr[Hyb.HybGame(A', Ob, Hyb
     + sp. rcondt{1} 1. move => &m1; skip => /> /#.
       by auto; call(: true); skip => />.
     + by auto; skip => />.
-  by wp; rnd; auto; call(: true); skip => &m1 &m2 />.
+  by wp; rnd; auto; call(: true); skip => &m1 &m2 />; smt(supp_dinter Nenc_gt0).
 smt().
 qed.
 
