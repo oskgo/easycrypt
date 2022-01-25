@@ -25,10 +25,34 @@ lemma supp_dinter1E (x : int) (a b : int) :
   x \in [a..b] => mu1 [a..b] x = 1%r / (b - a + 1)%r.
 proof. by rewrite supp_dinter dinter1E => ->. qed.
 
-(* end preliminaries *)
+lemma find_not_none (P : 'a -> 'b -> bool) (m : ('a,'b) fmap) : 
+  find P m <> None => exists x y, find P m = Some x /\ m.[x] = Some y /\ P x y.
+proof. by case: (findP P m) => // x y ? ? ? _; exists x y. qed.
+
+lemma uniq_mem_rem (y x : 'a) (s : 'a list) : 
+  uniq s => y \in rem x s <=> y \in s /\ y <> x.
+proof. by elim: s => //= /#. qed.
+
+lemma finite_dprod (d1 d2 : 'a distr) : 
+  is_finite (support d1) => is_finite (support d2) => is_finite (support (d1 `*` d2)).
+proof.
+move=> fin_d1 fin_d2; rewrite dprod_dlet finite_dlet // => x x_d1.
+by apply finite_dlet => // y y_d2; apply finite_dunit.
+qed.
 
 require StdBigop.
 import StdBigop.Bigreal.BRA.
+
+(* shadows more restrictive big_reinded from theories *)
+lemma nosmt big_reindex ['a 'b]
+  (P : 'a -> bool) (F : 'a -> real) (f : 'b -> 'a) (f' : 'a -> 'b) (s : 'a list) :
+  (forall x, x \in s => f (f' x) = x) => big P F s = big (P \o f) (F \o f) (map f' s).
+proof. 
+by move => /eq_in_map id_ff'; rewrite -big_map -map_comp id_ff' id_map.
+qed.
+
+(* end preliminaries *)
+
 
 type keyseed.
 type pkey.
@@ -648,7 +672,7 @@ clone import PROM.FullRO as K with
   type d_in_t  <- unit,
   type d_out_t <- bool
 proof*.
-module KS = K.FRO.
+module KS = K.RO.
 
 (* We don't want to use an oracle at this point 
 clone import PROM.FullRO as E with
@@ -710,8 +734,13 @@ public key belongs to a participant of the game. Note that KS.allKnown
 returns only the keyseeds that have acutally been returned by KS.get,
 keys that have merely been sampled are ignored. *)
 module Oideal : Oracle_i = { 
-  include Oreal [init,pkey]
+  include Oreal [pkey]
   var m : (pkey * pkey * ciphertext, key) fmap
+  
+  proc init() = {
+    KS.init();
+    m <- empty;
+  }
 
   proc encap (i : int,  pk : pkey) : ciphertext * key = { 
     var es,ks,sk,pks,m_ks;
@@ -722,8 +751,8 @@ module Oideal : Oracle_i = {
       es <$ dencseed;
       sk <- skgen(ks);
       (c,k) <- encap es sk pk;
-      m_ks <@ KS.allKnown();
-      if (pk \in frng (map (fun _ ks => pkgen ks) m_ks))
+      m_ks <@ KS.restrK();
+      if (find (fun _ ks => pk = pkgen ks) m_ks <> None)
       { 
         k <$ dkey; 
         pks <- pkgen(ks);
@@ -798,7 +827,7 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
           es <$ dencseed;
           (c,k) <- encap es ski pk;
         }
-        m_ks <@ KS.allKnown();
+        m_ks <@ KS.restrK();
         o_j <- find (fun x ks => pk = pkgen(ks)) m_ks;
         if (o_j <> None) { (* given public key belongs to some user j *)
           j <- oget o_j;
@@ -823,15 +852,15 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
   proc guess() = { 
     var r:bool <- witness;
     KS.init();
-    O.u <$ [1..n];
-    O.v <$ [1..n];
+    (O.u,O.v) <$ [1..n] `*` [1..n];
     O.m <- empty;
     O.f <- fun x => if x = O.u then u1 else u2;
     r <@ A(O).guess();
     return r;
   }
 }.
-    
+
+
 section PROOF.
 
 declare module A <: Adversary{Oreal,Oideal,Count,
@@ -843,12 +872,160 @@ declare axiom A_ll : forall (O <: Oracle{A}),
   islossless O.decap => 
   islossless A(O).guess.
 
+local clone Means as M1 with
+  type input <- int * int,
+  type output <- bool,
+  op d <- [1..n] `*` [1..n]
+proof *.
+
+local clone Means as M0 with
+  type input <- int * int,
+  type output <- bool,
+  op d <- [1..n] `*` [0..n-1]
+proof *.
+
+local module OG : Oracle = {
+  include Oreal [init,pkey]
+  include var Oideal[decap]
+  var u,v : int
+
+  proc encap (i : int,  pk : pkey) : ciphertext * key = { 
+    var es,ks,sk,pks,m_ks,j;
+    var c <-witness;
+    var k <- witness;
+    if (1 <= i <= n) {
+      ks <@ KS.get(i);
+      es <$ dencseed;
+      sk <- skgen(ks);
+      (c,k) <- encap es sk pk;
+      m_ks <@ KS.restrK();
+      if (find (fun _ ks => pk = pkgen ks) m_ks <> None)
+      { 
+        j <- oget (find (fun _ ks => pk = pkgen ks) m_ks);
+        if (u < i \/ i = u /\ v < j) {
+          k <$ dkey; 
+          pks <- pkgen(ks);
+          m.[(pks,pk,c)] <- k;
+        } 
+      }
+    }
+    return (c,k);
+  }
+}.  
+
+local module G : M1.Worker = {
+  proc work(u:int,v:int) = {
+    var r;
+
+    Oideal.init();
+    OG.u <- u;
+    OG.v <- v;
+    r <@ A(OG).guess();
+    return r;
+  }
+}.
+
+
+local lemma Oreal_Gnn &m : 
+  Pr[ Game(Oreal ,A).main() @ &m : res ] = Pr[ G.work(n,n) @ &m : res].
+proof.
+byequiv => //; proc; inline*.
+call(: OG.u{2} = n /\ OG.v{2} = n /\ ={KS.m} /\ (Oideal.m = empty){2} /\
+       forall i, i \in KS.m{2} => 1 <= i <= n ).
+- proc; inline Oreal.encap; sp; if; 1,3: by auto. 
+  seq 4 5 : (={pk,i,ks,es,c,k} /\ ={KS.m} /\ (Oideal.m = empty){2} /\
+             OG.u{2} = n /\ OG.v{2} = n /\ (i \in KS.m){2} /\ (m_ks = KS.m){2} /\ 
+             (forall i, i \in KS.m => 1 <= i <= n){2}).
+    inline*; auto => />; smt(mem_set).
+  if{2}; 2: by auto.
+  rcondf{2} 2; last by auto.
+  auto => &2 /> ? ks_bound /find_not_none /> j ks -> j_ks; smt(fmapP).
+- proc; inline Oreal.decap; sp; if; 1,3: by auto.
+  by inline KS.get; auto => />; smt(mem_set mem_empty).
+- proc; inline*; sp; if; 1,3: by auto. auto => />; smt(mem_set).
+auto => />; smt(mem_empty).
+qed.
+
+local lemma Oideal_G10 &m : 
+   Pr[ Game(Oideal ,A).main() @ &m : res ] = Pr[ G.work(1,0) @ &m : res].
+proof.
+byequiv => //; proc; inline*.
+call(: OG.u{2} = 1 /\ OG.v{2} = 0 /\ ={KS.m, Oideal.m} /\ 
+       forall i, i \in KS.m{2} => 1 <= i <= n ).
+- proc; inline Oideal.encap; sp; if; 1,3: by auto. 
+  seq 5 5 : (={pk,i,ks,es,c,k,m_ks} /\ ={KS.m, Oideal.m} /\
+             OG.u{2} = 1 /\ OG.v{2} = 0 /\ (m_ks = KS.m){2} /\ (i \in KS.m){2} /\ 
+             (forall i, i \in KS.m => 1 <= i <= n){2}).
+  + by inline*; auto => />; smt(mem_set).
+  if; 1,3: by auto. 
+  rcondt{2} 2; last by auto.
+  auto => &2 /> ? ks_bound /find_not_none /> j ks -> j_ks; smt(fmapP).
+- proc; inline Oideal.decap; sp; if; 1,3: by auto.
+  by inline KS.get; auto => />; smt(mem_set).
+- proc; inline*; sp; if; 1,3: by auto. auto => />; smt(mem_set).
+auto => />; smt(mem_empty).
+qed.
+
+local lemma OrealB_Guv &m : 
+  Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res] = 
+  Pr [ M1.Rand(G).main() @ &m : res.`2].
+proof.
+byequiv => //; proc; inline*. 
+
+admitted.
+
+local lemma OidealB_Guv1 &m : 
+  Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res] = 
+  Pr [ M0.Rand(G).main() @ &m : res.`2].
+admitted.
+
+local lemma G_shift &m u : 1 <= u < n =>
+  Pr [G.work(u,n) @ &m : res] = Pr [G.work(u+1,0) @ &m : res].
+admitted.
+
 lemma lemma3 &m : 
   `| Pr[ Game(Oreal ,A).main() @ &m : res ] - 
      Pr[ Game(Oideal,A).main() @ &m : res] |
 =  (n^2)%r * `| Pr[ O2.Game(O2.Oreal ,B(A)).main() @ &m : res] - 
                 Pr[ O2.Game(O2.Oideal,B(A)).main() @ &m : res]|.
-admitted.
+proof.
+rewrite Oreal_Gnn Oideal_G10 OrealB_Guv OidealB_Guv1.
+have fin_prod : forall a b, is_finite (support ([1..n] `*` [a..b])). admit.
+have -> /= := M1.Mean_uni G &m (fun _ _ b => b) (1%r/(n^2)%r) _ _.
+- admit.
+- exact fin_prod.
+have -> /= := M0.Mean_uni G &m (fun _ _ b => b) (1%r/(n^2)%r) _ _.
+- admit.
+- exact fin_prod.
+pose s1 := to_seq _; pose s0 := to_seq _.
+have uniq_s1 : uniq s1 by apply/uniq_to_seq/fin_prod.
+have uniq_s0 : uniq s0 by apply/uniq_to_seq/fin_prod.
+rewrite (big_rem _ _ s1 (n,n)) {1}/predT /=. admit.
+rewrite (big_rem _ _ s0 (1,0)) {2}/predT /=. admit.
+rewrite -StdOrder.RealOrder.normrZ. smt.
+rewrite RField.mulrBr ![(n^2)%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1:smt.
+suff -> : big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res]) (rem (n, n) s1)
+        = big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res]) (rem (1, 0) s0).
+by have -> : forall (a b c : real), b + a - (c + a) = b - c by smt().
+pose f (v : int * int) := if v.`2 = n then (v.`1+1,0) else v.
+pose g (v : int * int) := if v.`2 = 0 then (v.`1-1,n) else v.
+have can_f : forall x, x \in rem (1,0) s0 => f (g x) = x. 
+  case => u v. rewrite uniq_mem_rem // /s1 mem_to_seq ?fin_prod /=.
+  by rewrite supp_dprod /= !supp_dinter /f /g /= /#.
+rewrite (big_reindex _ _ _ _ _ can_f) /(\o).
+rewrite [big _ _ (List.map _ _)](eq_big_perm _ _ _ (rem (n, n) s1)).
+- (* TODO: clean this up *)
+  apply uniq_perm_eq; 2: by rewrite rem_uniq uniq_to_seq fin_prod.
+  + rewrite map_inj_in_uniq 1:/# rem_uniq uniq_to_seq fin_prod.
+  + case => u v. rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=.
+    split => [/mapP [[u' v']]|]. 
+    * rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=. smt().
+    * move => ?. apply/mapP; exists (f (u,v)). 
+      rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=. smt().
+apply eq_big_seq => // -[u v]. 
+rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=.
+rewrite /f /=. case (v = n) => // -> {v} ?. apply: G_shift. smt().
+qed.
 
 (* combining everything to get the theorem *)
 module B11 (A : Adversary) : O2.Adversary = O2.B(B(A)).
@@ -861,8 +1038,8 @@ lemma theorem11 &m :
                     Pr[ O2.Game(O2.Oideal,B11(A)).main() @ &m : res]|.
 proof. 
 have l2 := O2.lemma2 (B(A)) _ _ &m.
-- admit. 
-- admit.
+- admit. (* B(A) is lossless *)
+- admit. (* B(A) stays within the query bound *)
 by rewrite lemma3 l2 /#.
 qed.
 
