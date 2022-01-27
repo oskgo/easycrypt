@@ -25,6 +25,13 @@ lemma supp_dinter1E (x : int) (a b : int) :
   x \in [a..b] => mu1 [a..b] x = 1%r / (b - a + 1)%r.
 proof. by rewrite supp_dinter dinter1E => ->. qed.
 
+lemma find_map (m : ('a, 'b) fmap) (f : 'a -> 'b -> 'c) (P : 'a -> 'c -> bool) : 
+  find P (map f m) = find (fun x y => P x (f x y)) m.
+proof.
+rewrite !findE fdom_map; congr; apply find_eq_in => x /=.
+by rewrite -memE fdomP /= mapE; case(m.[x]).
+qed.
+
 lemma find_not_none (P : 'a -> 'b -> bool) (m : ('a,'b) fmap) : 
   find P m <> None => exists x y, find P m = Some x /\ m.[x] = Some y /\ P x y.
 proof. by case: (findP P m) => // x y ? ? ? _; exists x y. qed.
@@ -39,6 +46,16 @@ proof.
 move=> fin_d1 fin_d2; rewrite dprod_dlet finite_dlet // => x x_d1.
 by apply finite_dlet => // y y_d2; apply finite_dunit.
 qed.
+
+lemma oget_map (m : ('a,'b) fmap) (f : 'a -> 'b -> 'c) i :
+  i \in m => oget (map f m).[i] = f i (oget m.[i]).
+proof. by rewrite mapE fmapP => -[y ->]. qed.
+
+lemma ifT (b : bool) (e1 e2 : 'a) : b => (if b then e1 else e2) = e1. 
+proof. smt(). qed.
+
+lemma ifF (b : bool) (e1 e2 : 'a) : !b => (if b then e1 else e2) = e2. 
+proof. smt(). qed.
 
 require StdBigop.
 import StdBigop.Bigreal.BRA.
@@ -83,6 +100,12 @@ axiom encapK (ks1 ks2 : keyseed) (es : encseed) :
 
 (* participants *)
 type user = [u1|u2].
+
+clone import FinType.FinType as UserFinType with
+  type t = user,
+  op enum = [u1;u2]
+proof*.
+realize enum_spec by case.
 
 theory Outsider2CCA.
 
@@ -604,6 +627,8 @@ end section PROOF.
 end Outsider2CCA.
 
 
+(** * n-participant version of Outsider-CCA *)
+
 theory OutsiderCCA.
 
 op n : { int | 0 < n } as n_gt0.
@@ -663,7 +688,6 @@ module Game (O : Oracle_i, A : Adversary) = {
     return r;
   }
 }.
-
 
 clone import PROM.FullRO as K with
   type in_t    <- int,
@@ -794,76 +818,104 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
     var f : int -> user
     var m : (pkey * pkey * ciphertext, key) fmap
 
-    (* internal *)
+    (* map of participants and their keys, needed to check whether a pkey 
+       belongs to a participant without accidentally sampling a new keyseed *)
+    var mpk : (int, pkey) fmap
+    var msk : (int, skey) fmap
+
+    (* internal - don't call on u or v *)
     proc skey (i : int) = {
       var ks;
-      ks <@ KS.get(i);
-      return skgen(ks);
-    } 
+      
+      ks <$ dkeyseed;
+      if (i \notin msk) { 
+        msk.[i] <- skgen(ks);
+        mpk.[i] <- pkgen(ks); (* also generate and store pkey *)
+      } 
+      return oget (msk.[i]);
+    }
 
     proc pkey (i : int) = {
-      var ks;
-      var pk <- witness;
+      var ks,pki;
       if (1 <= i <= n) { 
-        if (i = u \/ u = v) { 
-          pk <- O2.pkey(f i);
-        } else {
-          ks <@ KS.get(i);
-          pk <- pkgen(ks);    
+        if (i \notin mpk) {
+          if (i = u \/ i = v) { 
+            pki <@ O2.pkey(f i);
+            mpk.[i] <- pki;
+          } else {
+            ks <$ dkeyseed;
+            msk.[i] <- skgen(ks); (* also generate and store skey *)
+            mpk.[i] <- pkgen(ks); 
+          }
         }
       }
-      return pk;
+      return oget mpk.[i];
     }
 
     proc encap (i : int, pk : pkey) = {
-      var ski,pki,pkj,m_ks,o_j,j,es;
+      var ski,pki,oj,es;
       var c <- witness;
       var k <- witness;
       if (1 <= i <= n) { 
-        if (i = u \/ u = v) { 
-          (c,k) <- O2.encap(f i,pk);
-        } else {
-          ski <@ skey(i);
+        (* get pkey for i and ensure it has been sampled *)
+        pki <@ pkey(i);
+        (* determine whether pk belongs to some participant *)
+        oj <- find (fun _ pkj => pk = pkj) mpk;
+        
+        if   (i = u /\ oj = Some v) 
+        { (c,k) <- O2.chall(f u, f v); }
+        elif (i = u \/ i = v) 
+        { (c,k) <- O2.encap(f i, pk); }
+        else 
+        { (* msk.[i] defined due to pkey call and i <> u,v *) 
+          ski <- oget (msk.[i]); 
           es <$ dencseed;
-          (c,k) <- encap es ski pk;
-        }
-        m_ks <@ KS.restrK();
-        o_j <- find (fun x ks => pk = pkgen(ks)) m_ks;
-        if (o_j <> None) { (* given public key belongs to some user j *)
-          j <- oget o_j;
-          if (i = u /\ j = v) { 
-            (c,k) <- O2.chall(u1, f j); (* if u = v, f j is u1, else u2 *)
-          } elif (u < i \/ i = u /\ v < j) {
-            k <$ dkey;
-            pki <@ pkey(i);
-            pkj <@ pkey(j); 
-            m.[(pki,pkj,c)] <- k;
-          } 
+          (c,k) <- encap es ski pk; }
+        
+        if (oj <> None /\ (u < i \/ i = u /\ v < oget oj)) {
+           k <$ dkey;
+           pki <- oget (mpk.[i]);
+           m.[(pki,pk,c)] <-k;
         }
       }
       return (c,k);
     }
 
     proc decap (i : int, pk : pkey, c : ciphertext) : key option = { 
-      return None;
+      var sk,pki;
+      var k <- witness;
+      if (1 <= i <= n) {
+        pki <@ pkey(i);
+        if ((pk,pki,c) \in m) { 
+          k <- m.[pk,pki,c];
+        } else {
+          if (i = u \/ i = v) {
+            k <@ O2.decap(f i,pk, c);
+          } else {
+            sk <@ skey(i);
+            k <- decap sk pk c;
+          }
+        }
+      }
+      return k;
     }
   }
-
+      
   proc guess() = { 
     var r:bool <- witness;
-    KS.init();
     (O.u,O.v) <$ [1..n] `*` [1..n];
     O.m <- empty;
+    O.mpk <- empty;
+    O.msk <- empty;
     O.f <- fun x => if x = O.u then u1 else u2;
     r <@ A(O).guess();
     return r;
   }
 }.
 
-
 section PROOF.
 
-declare module A <: Adversary{Oreal,Oideal,Count,
+declare module A <: Adversary{Oreal,Oideal,Count,B,
                               O2.C.Count, O2.Oreal, O2.Oideal,O2.B, O2.CB.Count}.
 
 declare axiom A_ll : forall (O <: Oracle{A}),
@@ -890,7 +942,7 @@ local module OG : Oracle = {
   var u,v : int
 
   proc encap (i : int,  pk : pkey) : ciphertext * key = { 
-    var es,ks,sk,pks,m_ks,j;
+    var es,ks,sk,pks,m_ks,oj;
     var c <-witness;
     var k <- witness;
     if (1 <= i <= n) {
@@ -899,19 +951,17 @@ local module OG : Oracle = {
       sk <- skgen(ks);
       (c,k) <- encap es sk pk;
       m_ks <@ KS.restrK();
-      if (find (fun _ ks => pk = pkgen ks) m_ks <> None)
+      oj <- find (fun _ ks => pk = pkgen ks) m_ks;
+      if (oj <> None /\ (u < i \/ i = u /\ v < oget oj))
       { 
-        j <- oget (find (fun _ ks => pk = pkgen ks) m_ks);
-        if (u < i \/ i = u /\ v < j) {
-          k <$ dkey; 
-          pks <- pkgen(ks);
-          m.[(pks,pk,c)] <- k;
-        } 
+        k <$ dkey; 
+        pks <- pkgen(ks);
+        m.[(pks,pk,c)] <- k;
       }
     }
     return (c,k);
   }
-}.  
+}.
 
 local module G : M1.Worker = {
   proc work(u:int,v:int) = {
@@ -937,9 +987,8 @@ call(: OG.u{2} = n /\ OG.v{2} = n /\ ={KS.m} /\ (Oideal.m = empty){2} /\
              OG.u{2} = n /\ OG.v{2} = n /\ (i \in KS.m){2} /\ (m_ks = KS.m){2} /\ 
              (forall i, i \in KS.m => 1 <= i <= n){2}).
     inline*; auto => />; smt(mem_set).
-  if{2}; 2: by auto.
   rcondf{2} 2; last by auto.
-  auto => &2 /> ? ks_bound /find_not_none /> j ks -> j_ks; smt(fmapP).
+  auto => &2 /> ? ks_bound; rewrite negb_and -implybE => /find_not_none /> j ks -> /#.
 - proc; inline Oreal.decap; sp; if; 1,3: by auto.
   by inline KS.get; auto => />; smt(mem_set mem_empty).
 - proc; inline*; sp; if; 1,3: by auto. auto => />; smt(mem_set).
@@ -957,22 +1006,161 @@ call(: OG.u{2} = 1 /\ OG.v{2} = 0 /\ ={KS.m, Oideal.m} /\
              OG.u{2} = 1 /\ OG.v{2} = 0 /\ (m_ks = KS.m){2} /\ (i \in KS.m){2} /\ 
              (forall i, i \in KS.m => 1 <= i <= n){2}).
   + by inline*; auto => />; smt(mem_set).
-  if; 1,3: by auto. 
-  rcondt{2} 2; last by auto.
-  auto => &2 /> ? ks_bound /find_not_none /> j ks -> j_ks; smt(fmapP).
+  sp; if; 2,3: by auto. 
+  by move => &1 &2 /> ? ks_bound /find_not_none /> j ks -> /#.
 - proc; inline Oideal.decap; sp; if; 1,3: by auto.
   by inline KS.get; auto => />; smt(mem_set).
 - proc; inline*; sp; if; 1,3: by auto. auto => />; smt(mem_set).
 auto => />; smt(mem_empty).
 qed.
 
+local clone PROM.FullRO as K2 with
+  type in_t    <- user,
+  type out_t   <- keyseed,
+  op dout      <- fun _ => dkeyseed,
+  type d_in_t  <- unit,
+  type d_out_t <- bool
+proof*.
+
+local clone K2.FinEager as EK2 with
+  theory FinFrom <- UserFinType
+proof*.
+
+print EK2.RO_FinRO_D.  
+
+(* Variant of the 2p real game where the keys are handled by an oracle *)
+local module O2real(K2 : K2.RO) : O2.Oracle_i = {
+  proc init() = {
+    K2.init();
+  }
+
+  proc pkey (u : user) = { 
+    var ks;
+
+    ks <@ K2.get(u);
+    return (pkgen ks);
+  }
+
+  proc skey (u : user) = {
+    var ks;
+
+    ks <@ K2.get(u);
+    return (skgen ks);
+  }
+
+    proc encap (u : user, pk : pkey) = {
+    var c,k,sk,es;
+   
+    sk <@ skey(u);
+    es <$ dencseed;
+    (c,k) <- encap es sk pk;
+    return (c,k);  
+  }
+
+  proc decap (u : user, pk : pkey, c : ciphertext) = {
+    var k,sk;
+
+    sk <@ skey(u);
+    k <- decap sk pk c;
+    return k;
+  }
+
+  proc chall (snd : user, rcv : user) = {
+    var pk,sk,c,k,es;
+    
+    sk <@ skey(snd);
+    pk <@ pkey(rcv);
+    es <$ dencseed;
+
+    (c,k) <- encap es sk pk;
+    return (c,k);
+  }
+
+}.
+
+local equiv O2real_lazy : 
+  O2.Game(O2.Oreal, B(A)).main ~ O2.Game(O2real(K2.RO), B(A)).main 
+  : ={glob A} ==> ={res}.
+admitted.
+
 local lemma OrealB_Guv &m : 
   Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res] = 
   Pr [ M1.Rand(G).main() @ &m : res.`2].
 proof.
-byequiv => //; proc; inline*. 
+have -> : Pr[O2.Game(O2.Oreal, B(A)).main() @ &m : res] =
+          Pr[O2.Game(O2real(K2.RO), B(A)).main() @ &m : res] by byequiv O2real_lazy.
 
-admitted.
+byequiv => //; proc; inline *. 
+wp. call (: ={u,v}(B.O,OG)  
+            /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+            /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+            /\ (forall i, i <> OG.u{2} => i <> OG.v{2} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+            /\ (forall i, !(1 <= i <= n) => B.O.mpk.[i] = None){1}
+            /\ (forall i, i = OG.u{2} \/ i = OG.v{2} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+            /\ ={m}(B.O,Oideal)
+          ). 
+- proc; sp; if; 1,3: by auto.
+  seq 1 1 : (#[/5:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2}). 
+  + (* redo pkey proof ... *) 
+    inline*. rcondt{1} 2; 1: by auto. sp.
+    if{1}. 
+    + rcondt{2} 2; first by auto => />; smt(mem_map).
+      if{1}. 
+      * rcondt{1} 4; 1: by auto => />; smt(fmapP mem_map oget_map).
+        wp. rnd. auto. move => /> &1 &2; smt(get_setE map_set). 
+      * wp. rnd. auto. move => />; smt(fmapP get_setE map_set). 
+    + rcondf{2} 2; first by auto => />; smt(mem_map). 
+      auto => />; smt(oget_map mem_map).
+  seq 2 3 : (#pre /\ ={c,k} /\ (oj = find (fun (_ : int) (pkj : pkey) => pk = pkj) B.O.mpk){1}).
+  + sp; if{1}; last if{1}.
+    * (* challenge oracle query *)
+      inline*. (* TODO: cleanup *)
+      rcondf{1} 7; first by auto => />; smt(fmapP). 
+      rcondf{1} 12. 
+        auto => />. progress. case (OG.v{m0} = OG.u{m0}) => ?. smt(). 
+        move/find_some : H5 => -[pku]. rewrite mapE /= -H1 //= ifF //. smt().
+      auto => /> &1 &2 2? HK2 2? Hu Hv 4? es _. rewrite !HK2 //. have /= -> := HK2 (OG.u{2}).
+      rewrite Hu. case/find_some: Hv => pk'. rewrite mapE /=. smt().
+    * (* encap oracle query *)
+      inline*. 
+      rcondf{1} 7; first by auto => />; smt(fmapP). 
+      by auto => /> &1 &2 ? ? HK2 ? ? ? ? ? _ _ es _; rewrite HK2 // /#. 
+    * (* encapsulate locally *)
+      by auto => />; smt(). 
+  inline KS.restrK; sp. 
+  if; 2,3: by auto => />; smt(oget_map mem_map). 
+  by move => /> ? ?; rewrite !find_map /#.
+- proc; sp; if; 1,3: by auto.
+  inline B(A, O2.C.Count(O2real(K2.RO))).O.pkey KS.get; sp.
+  seq 2 4 : (#pre /\ ={pki} /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2}). 
+  (* redo pkey proof once again *)
+  + inline*. rcondt{1} 1; first by auto. 
+    if{1}.
+    + rcondt{2} 2; first by auto => />; smt(mem_map).
+      if{1}.
+      * rcondt{1} 4; 1: by auto => />; smt(fmapP mem_map oget_map).
+        wp. rnd. auto. move => /> &1 &2; smt(get_setE map_set).
+      * wp. rnd. auto. move => />; smt(fmapP get_setE map_set).
+    + rcondf{2} 2; first by auto => />; smt(mem_map).
+      auto => />; smt(oget_map mem_map).
+  if; 1,2: by auto. 
+  if{1}. 
+  + inline*.
+    rcondf{1} 7; first by auto => /> /#.
+    by auto => /> &1 &2 ? ? HK2 ? ? ? ? ? _ _; rewrite HK2 //= /#. 
+  + inline*. rcondf{1} 3; first by auto => /> /#.
+    by auto => /> &1 &2 Hmsk ? HK2 ? ? ? ? ? _ _; rewrite Hmsk //= /#. 
+- proc. sp. inline*. if; 1,3: by auto => /#.
+  if{1}. 
+  + rcondt{2} 3; first by auto => />; smt(mem_map).
+    if{1}. 
+    * rcondt{1} 4; 1: by auto => />; smt(fmapP mem_map oget_map).
+      wp. rnd. auto. move => /> &1 &2; smt(get_setE map_set). 
+    * wp. rnd. auto. move => />; smt(fmapP get_setE map_set). 
+  + rcondf{2} 3; first by auto => />; smt(mem_map). 
+    auto => />; smt(oget_map mem_map).
+auto => />; smt(map_empty emptyE).
+qed.
 
 local lemma OidealB_Guv1 &m : 
   Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res] = 
