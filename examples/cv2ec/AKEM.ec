@@ -1026,7 +1026,7 @@ local clone K2.FinEager as EK2 with
   theory FinFrom <- UserFinType
 proof*.
 
-print EK2.RO_FinRO_D.  
+local module ERO = EK2.FinRO.
 
 (* Variant of the 2p real game where the keys are handled by an oracle *)
 local module O2real(K2 : K2.RO) : O2.Oracle_i = {
@@ -1078,18 +1078,134 @@ local module O2real(K2 : K2.RO) : O2.Oracle_i = {
 
 }.
 
-local equiv O2real_lazy : 
-  O2.Game(O2.Oreal, B(A)).main ~ O2.Game(O2real(K2.RO), B(A)).main 
-  : ={glob A} ==> ={res}.
-admitted.
+local module O2ideal (K2 : K2.RO) : O2.Oracle_i = {
+  include var O2real(K2)[-init,chall,decap]
+  var m : (pkey * pkey * ciphertext, key) fmap
+
+  proc init() = {
+    K2.init();
+    m <- empty;
+  }
+
+  proc decap (u : user, pk : pkey, c : ciphertext) = {
+    var k,sku,pku;
+
+    sku <@ skey(u);
+    pku <@ pkey(u); 
+
+    if ((pk,pku,c) \in m) {
+      k <- m.[(pk,pku,c)];
+    } else { 
+      k <- decap sku pk c;
+    }
+    return k;
+  }
+
+  proc chall (snd : user, rcv : user) = {
+    var pks, pk,sk,c,k,es;
+    
+    sk <@ skey(snd);
+    pk <@ pkey(rcv);
+    es <$ dencseed;
+    (c,k) <- encap es sk pk;
+    k <$ dkey;
+    pks <@ pkey(snd); 
+    m.[(pks,pk,c)] <- k;
+    return (c,k);
+  }
+}.
+
+local module (Dreal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) = {
+  proc distinguish() = {
+    var r;
+    O2.C.Count(O2real(K2)).init();
+    r <@ C(O2.C.Count(O2real(K2))).guess();
+    return r;
+  }
+}.
+
+local module (Dideal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) = {
+  proc distinguish() = {
+    var r;
+    O2ideal.m <- empty;
+    O2.C.Count(O2ideal(K2)).init();
+    r <@ C(O2.C.Count(O2ideal(K2))).guess();
+    return r;
+  }
+}.
+
+local equiv O2real_lazy (C <: O2.Adversary{K2.RO,O2.Oreal,O2real,O2.C.Count,K2.FRO}) :
+  O2.Game(O2.Oreal, C).main ~ O2.Game(O2real(K2.RO), C).main 
+  : ={glob C,glob O2.C.Count} ==> ={res}.
+proof.
+transitivity O2.Game(O2real(ERO),C).main 
+  (={glob C,glob O2.C.Count} ==> ={res}) (={glob C,glob O2.C.Count} ==> ={res}); 1,2: smt().
+- proc; inline*. 
+  rcondt{2} 3; 1: by auto.
+  rcondt{2} 6; 1: by auto; smt(emptyE).
+  rcondt{2} 8; 1: by auto.
+  rcondt{2} 11; 1: by auto => />; smt(get_setE emptyE).
+  rcondf{2} 13; 1: by auto.
+  wp.
+  call (: (forall u, u \in K2.RO.m){2} 
+          /\ O2.Oreal.sk1{1} = skgen (oget K2.RO.m.[u1]{2})
+          /\ O2.Oreal.pk1{1} = pkgen (oget K2.RO.m.[u1]{2})
+          /\ O2.Oreal.sk2{1} = skgen (oget K2.RO.m.[u2]{2})
+          /\ O2.Oreal.pk2{1} = pkgen (oget K2.RO.m.[u2]{2})
+    ); 1..4: by proc; inline*; auto => />; smt(get_setE).
+  by auto => /> /=; smt(get_setE).
+transitivity K2.MainD(Dreal(C),ERO).distinguish
+  (={glob C,glob O2.C.Count} ==> ={res}) 
+  (={glob C,glob O2.C.Count} ==> ={res}); 
+    1,2: smt(); first by proc; inline*; sim.
+transitivity K2.MainD(Dreal(C),K2.RO).distinguish
+  (={glob C,glob O2.C.Count} ==> ={res}) 
+  (={glob C,glob O2.C.Count} ==> ={res}); 
+    1,2: smt(); last by proc; inline*; sim.
+have X := EK2.RO_FinRO_D _ (Dreal(C)); 1: smt(dkeyseed_ll). 
+by symmetry; conseq X; auto. 
+qed.
+
+local equiv O2ideal_lazy (C <: O2.Adversary{K2.RO,O2.Oideal,O2ideal,O2.C.Count,K2.FRO}) :  
+  O2.Game(O2.Oideal, C).main ~ O2.Game(O2ideal(K2.RO), C).main 
+  : ={glob C,glob O2.C.Count} ==> ={res}.
+proof.
+transitivity O2.Game(O2ideal(ERO),C).main 
+  (={glob C,glob O2.C.Count} ==> ={res}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 1,2: smt().
+- proc; inline*. 
+  rcondt{2} 3; 1: by auto.
+  rcondt{2} 6; 1: by auto; smt(emptyE).
+  rcondt{2} 8; 1: by auto.
+  rcondt{2} 11; 1: by auto => />; smt(get_setE emptyE).
+  rcondf{2} 13; 1: by auto.
+  wp.
+  call (: (forall u, u \in K2.RO.m){2} 
+          /\ O2.Oreal.sk1{1} = skgen (oget K2.RO.m.[u1]{2})
+          /\ O2.Oreal.pk1{1} = pkgen (oget K2.RO.m.[u1]{2})
+          /\ O2.Oreal.sk2{1} = skgen (oget K2.RO.m.[u2]{2})
+          /\ O2.Oreal.pk2{1} = pkgen (oget K2.RO.m.[u2]{2})
+          /\ ={m}(O2.Oideal,O2ideal)
+    ); 1..4: by proc; inline*; auto => />; smt(get_setE).
+  by auto => /> /=; smt(get_setE).
+transitivity K2.MainD(Dideal(C),ERO).distinguish
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 
+    1,2: smt(); first by proc; inline*; sim.
+transitivity K2.MainD(Dideal(C),K2.RO).distinguish
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 
+    1,2: smt(); last by proc; inline*; sim.
+have X := EK2.RO_FinRO_D _ (Dideal(C)); 1: smt(dkeyseed_ll). 
+by symmetry; conseq X; auto => />.
+qed.
 
 local lemma OrealB_Guv &m : 
   Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res] = 
   Pr [ M1.Rand(G).main() @ &m : res.`2].
 proof.
 have -> : Pr[O2.Game(O2.Oreal, B(A)).main() @ &m : res] =
-          Pr[O2.Game(O2real(K2.RO), B(A)).main() @ &m : res] by byequiv O2real_lazy.
-
+          Pr[O2.Game(O2real(K2.RO), B(A)).main() @ &m : res] by byequiv (O2real_lazy (B(A))).
 byequiv => //; proc; inline *. 
 wp. call (: ={u,v}(B.O,OG)  
             /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
@@ -1165,6 +1281,40 @@ qed.
 local lemma OidealB_Guv1 &m : 
   Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res] = 
   Pr [ M0.Rand(G).main() @ &m : res.`2].
+proof.
+have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res] =
+          Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res] by byequiv (O2ideal_lazy (B(A))).
+byequiv => //; proc; inline *. 
+wp. call (: ={u}(B.O,OG) /\ B.O.v{1} = OG.v{2} + 1
+            /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+            /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+            /\ (forall i, i <> OG.u{2} => i <> OG.v{2} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+            /\ (forall i, !(1 <= i <= n) => B.O.mpk.[i] = None){1}
+            /\ (forall i, i = OG.u{2} \/ i = OG.v{2} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+            /\ ={m}(B.O,Oideal)
+          ). 
+- proc; sp; if; 1,3: by auto.
+  seq 1 1 : (#[/5:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2}). 
+  + admit.
+  seq 2 3 : (#pre /\ ={c,k} /\ (oj = find (fun (_ : int) (pkj : pkey) => pk = pkj) B.O.mpk){1}).
+  + sp; if{1}; last if{1}.
+    * (* challenge oracle query *)
+      inline*. (* TODO: cleanup *)
+      rcondf{1} 7; first by auto => />; smt(fmapP). 
+      rcondf{1} 12. 
+        auto => />. progress. case (OG.v{m0} + 1 = OG.u{m0}) => ?. smt(). 
+        move/find_some : H5 => -[pku]. rewrite mapE /= -H1 //=. (* ifF //. smt(). *)
+  (*     auto => /> &1 &2 2? HK2 2? Hu Hv 4? es _. rewrite !HK2 //. have /= -> := HK2 (OG.u{2}). *)
+  (*     rewrite Hu. case/find_some: Hv => pk'. rewrite mapE /=. smt(). *)
+  (*   * (* encap oracle query *) *)
+  (*     inline*.  *)
+  (*     rcondf{1} 7; first by auto => />; smt(fmapP).  *)
+  (*     by auto => /> &1 &2 ? ? HK2 ? ? ? ? ? _ _ es _; rewrite HK2 // /#.  *)
+  (*   * (* encapsulate locally *) *)
+  (*     by auto => />; smt().  *)
+  (* inline KS.restrK; sp.  *)
+  (* if; 2,3: by auto => />; smt(oget_map mem_map).  *)
+  (* by move => /> ? ?; rewrite !find_map /#.   *)
 admitted.
 
 local lemma G_shift &m u : 1 <= u < n =>
