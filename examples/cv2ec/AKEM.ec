@@ -1,4 +1,4 @@
-require import AllCore List Finite Distr DBool DInterval LorR FSet SmtMap.
+require import AllCore List Finite Distr DBool DInterval DList LorR FSet SmtMap.
 require (****) PROM Means.
 
 (* preliminaries *)
@@ -57,6 +57,24 @@ proof. smt(). qed.
 lemma ifF (b : bool) (e1 e2 : 'a) : !b => (if b then e1 else e2) = e2. 
 proof. smt(). qed.
 
+lemma rem_filterE (m : ('a,'b) fmap) x (p : 'a -> 'b -> bool) :
+  (forall y, !p x y) => rem (filter p m) x = filter p m.
+proof.
+move => Hpx; apply/fmap_eqP => z; rewrite remE. 
+by case(z = x) => // ->; rewrite filterE /#. 
+qed.
+
+lemma eq_in_filter ['a 'b] (p1 p2 : 'a -> 'b -> bool) (m : ('a,'b) fmap) :
+  (forall (x : 'a) y , m.[x] = Some y => p1 x y <=> p2 x y) => filter p1 m = filter p2 m.
+proof. 
+move=> eq_p; apply/fmap_eqP => x; rewrite !filterE /#.
+qed.
+
+lemma get_mem (m : ('a,'b) fmap) x y : 
+  m.[x] = Some y => x \in m.
+proof. smt(). qed.
+
+
 require StdBigop.
 import StdBigop.Bigreal.BRA.
 
@@ -82,6 +100,9 @@ op [lossless] dkey : key distr.
 
 op pkgen : keyseed -> pkey.
 op skgen : keyseed -> skey.
+
+op pk_coll n = mu (dlist dkeyseed n) (fun ks => !uniq (map pkgen ks)).
+
 
 type encseed.
 op [lossless] dencseed : encseed distr.
@@ -1285,37 +1306,70 @@ proof.
 have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res] =
           Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res] by byequiv (O2ideal_lazy (B(A))).
 byequiv => //; proc; inline *. 
-wp. call (: ={u}(B.O,OG) /\ B.O.v{1} = OG.v{2} + 1
+pose p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) := 
+  x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v].
+pose q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) := 
+  x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v].
+
+wp. call (: ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
             /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
             /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
-            /\ (forall i, i <> OG.u{2} => i <> OG.v{2} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+            /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
             /\ (forall i, !(1 <= i <= n) => B.O.mpk.[i] = None){1}
-            /\ (forall i, i = OG.u{2} \/ i = OG.v{2} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
-            /\ ={m}(B.O,Oideal)
-          ). 
+            /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+            /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+            /\ ( Oideal.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+            /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+                 pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
+          ).
 - proc; sp; if; 1,3: by auto.
   seq 1 1 : (#[/5:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2}). 
   + admit.
-  seq 2 3 : (#pre /\ ={c,k} /\ (oj = find (fun (_ : int) (pkj : pkey) => pk = pkj) B.O.mpk){1}).
-  + sp; if{1}; last if{1}.
-    * (* challenge oracle query *)
-      inline*. (* TODO: cleanup *)
-      rcondf{1} 7; first by auto => />; smt(fmapP). 
-      rcondf{1} 12. 
-        auto => />. progress. case (OG.v{m0} + 1 = OG.u{m0}) => ?. smt(). 
-        move/find_some : H5 => -[pku]. rewrite mapE /= -H1 //=. (* ifF //. smt(). *)
-  (*     auto => /> &1 &2 2? HK2 2? Hu Hv 4? es _. rewrite !HK2 //. have /= -> := HK2 (OG.u{2}). *)
-  (*     rewrite Hu. case/find_some: Hv => pk'. rewrite mapE /=. smt(). *)
-  (*   * (* encap oracle query *) *)
-  (*     inline*.  *)
-  (*     rcondf{1} 7; first by auto => />; smt(fmapP).  *)
-  (*     by auto => /> &1 &2 ? ? HK2 ? ? ? ? ? _ _ es _; rewrite HK2 // /#.  *)
-  (*   * (* encapsulate locally *) *)
-  (*     by auto => />; smt().  *)
-  (* inline KS.restrK; sp.  *)
-  (* if; 2,3: by auto => />; smt(oget_map mem_map).  *)
-  (* by move => /> ? ?; rewrite !find_map /#.   *)
-admitted.
+  sp. 
+  if{1}.
+  + (* challenge query (with randomized k) *)
+    inline*.
+    rcondf{1} 7; first by auto => /> /#.
+    rcondf{1} 12. 
+      auto => /> &hr ? ? HK2 4?; rewrite find_map /= => /find_some [ksv] [? ?] *.
+      by rewrite fmapP; exists ksv; rewrite HK2.
+    rcondf{1} 20; first by auto => /> /#.
+    rcondf{1} 25; first by auto => /> /#. 
+    rcondt{2} 6; first by auto => /> &1; rewrite !find_map /#.
+    wp. rnd{1}; wp. rnd. auto => /> &1 &2; rewrite !find_map. progress. 
+    * rewrite H1 //=; smt(find_some). 
+    * case/find_some: H6 => ks_y [/= Hy1 Hy2]. 
+      rewrite filter_set /= {2}/p !oget_map 1,2:/# /=. rewrite H5 Hy1 Hy2 /=.
+      by have /= -> := H1 B.O.v{1};  have /= -> := H1 OG.u{2}; rewrite H5 Hy1.
+    * case/find_some: H6 => ks_y [/= Hy1 Hy2] /=.
+      rewrite filter_set /= {2}/q !oget_map 1,2:/# /=. rewrite H5 Hy1 Hy2 /=. 
+      rewrite rem_filterE /q //=. rewrite !oget_map 1,2:/#. by rewrite H5 Hy1 /=.
+    * admit.
+    * admit.
+   + admit.
+- admit.
+- proc; sp; if; 1,3: by auto => /> /#.
+  inline*; sp.
+  if{1}. 
+  + rcondt{2} 2. auto => />; smt(mem_map).
+    if{1}. 
+    * rcondt{1} 4; 1: by auto => />; smt(fmapP mem_map oget_map).
+      wp. rnd. auto. move => &1 &2 /> ? ? HK2 Ex1 Ex2 R *. 
+      pose u := if i{2} = OG.u{2} then u1 else u2.
+      rewrite !get_set_sameE /= map_set /=. 
+      do ! split; 1..3: smt(get_setE).  
+      pose mpk := map (fun (_ : int) (ks : keyseed) => pkgen ks) RO.m{2}. 
+      move: Ex1 Ex2 R; rewrite -/mpk => Ex1 Ex2 R. 
+      have iNmpk : i{2} \notin mpk by done. 
+      apply: eq_in_filter => @/p -[pki pkj c k] /get_mem /Ex1 /=.
+      rewrite get_setE. 
+      admit.
+      admit.
+      admit.
+    admit.
+    admit.
+- admit.
+qed.
 
 local lemma G_shift &m u : 1 <= u < n =>
   Pr [G.work(u,n) @ &m : res] = Pr [G.work(u+1,0) @ &m : res].
