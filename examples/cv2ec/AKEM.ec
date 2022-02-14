@@ -839,8 +839,9 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
     var f : int -> user
     var m : (pkey * pkey * ciphertext, key) fmap
 
-    (* map of participants and their keys, needed to check whether a pkey 
-       belongs to a participant without accidentally sampling a new keyseed *)
+    (* map of participants and their keys. The map [mpk] enables us to
+    express bad_k for B solely in terms of the memory of B (and allows
+    us to easyly check whether bad_k has occurred *)
     var mpk : (int, pkey) fmap
     var msk : (int, skey) fmap
 
@@ -913,7 +914,7 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
           if (i = u \/ i = v) {
             k <@ O2.decap(f i,pk, c);
           } else {
-            sk <@ skey(i);
+            sk <- oget msk.[i];
             k <- decap sk pk c;
           }
         }
@@ -934,15 +935,50 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
   }
 }.
 
+op fcoll (f : 'b -> 'c) (m : ('a,'b) fmap)  =
+  exists i j, i \in m /\ j \in m /\ i <> j /\ 
+              f (oget m.[i]) = f (oget m.[j]).
+
+lemma fcollPn (f : 'b -> 'c) (m : ('a,'b) fmap) : 
+    !fcoll f m <=> 
+    forall i j, i \in m => j \in m => i <> j => f (oget m.[i]) <> f (oget m.[j]).
+proof. smt(). qed.
+
+lemma find_none (p : 'a -> 'b -> bool) (m : ('a,'b) fmap): 
+  (forall x, x \in m => !p x (oget m.[x])) => find p m = None.
+proof. by move=> np; apply contraT => /find_not_none /#. qed.
+
+lemma uniq_find_some z (P : 'a -> 'b -> bool) (m : ('a, 'b) fmap) :
+  (forall (x : 'a) (y : 'b), m.[x] = Some y => P x y => x = z) =>
+  z \in m => P z (oget m.[z]) => find P m = Some z.
+proof.
+move => uniq_m z_m p_z; case (findP P m) => [/#|x y fmx mx p_xy]. 
+by have <- := find_some_unique _ _ _ _ uniq_m fmx.
+qed.
+
+lemma uniq_find_set (p : 'a -> 'b -> bool) (m : ('a,'b) fmap) x y : 
+  (forall x1 x2, x1 \in m => x2 \in m => 
+    p x1 (oget m.[x1]) => p x2 (oget m.[x2]) => x1 = x2) =>
+  x \notin m => !p x y => find p m.[x <- y] = find p m.
+proof.
+move=> x_m uniq_m p_xy. case (findP p m) => [-> npm|a b E m_a p_ab]. 
+- apply find_none; smt(mem_set get_setE).
+rewrite E. apply uniq_find_some; smt(mem_set get_setE). 
+qed.
+
 section PROOF.
+
+(* bad key event: there are two participants i and j sharing a public key *)
+op bad_k (m : (int, keyseed) fmap) = fcoll pkgen m.
+
 
 declare module A <: Adversary{Oreal,Oideal,Count,B,
                               O2.C.Count, O2.Oreal, O2.Oideal,O2.B, O2.CB.Count}.
 
 declare axiom A_ll : forall (O <: Oracle{A}),
-  islossless O.pkey =>
   islossless O.encap =>
   islossless O.decap => 
+  islossless O.pkey =>
   islossless A(O).guess.
 
 local clone Means as M1 with
@@ -985,6 +1021,7 @@ local module OG : Oracle = {
 }.
 
 local module G : M1.Worker = {
+
   proc work(u:int,v:int) = {
     var r;
 
@@ -996,9 +1033,9 @@ local module G : M1.Worker = {
   }
 }.
 
-
 local lemma Oreal_Gnn &m : 
-  Pr[ Game(Oreal ,A).main() @ &m : res ] = Pr[ G.work(n,n) @ &m : res].
+  Pr[ Game(Oreal ,A).main() @ &m : res /\ !bad_k KS.m ] = 
+  Pr[ G.work(n,n) @ &m : res /\ !bad_k KS.m ].
 proof.
 byequiv => //; proc; inline*.
 call(: OG.u{2} = n /\ OG.v{2} = n /\ ={KS.m} /\ (Oideal.m = empty){2} /\
@@ -1017,7 +1054,8 @@ auto => />; smt(mem_empty).
 qed.
 
 local lemma Oideal_G10 &m : 
-   Pr[ Game(Oideal ,A).main() @ &m : res ] = Pr[ G.work(1,0) @ &m : res].
+   Pr[ Game(Oideal ,A).main() @ &m : res /\ !bad_k KS.m ] = 
+   Pr[ G.work(1,0) @ &m : res /\ !bad_k KS.m ].
 proof.
 byequiv => //; proc; inline*.
 call(: OG.u{2} = 1 /\ OG.v{2} = 0 /\ ={KS.m, Oideal.m} /\ 
@@ -1157,10 +1195,10 @@ local module (Dideal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) 
 
 local equiv O2real_lazy (C <: O2.Adversary{K2.RO,O2.Oreal,O2real,O2.C.Count,K2.FRO}) :
   O2.Game(O2.Oreal, C).main ~ O2.Game(O2real(K2.RO), C).main 
-  : ={glob C,glob O2.C.Count} ==> ={res}.
+  : ={glob C,glob O2.C.Count} ==> ={res,glob C}.
 proof.
 transitivity O2.Game(O2real(ERO),C).main 
-  (={glob C,glob O2.C.Count} ==> ={res}) (={glob C,glob O2.C.Count} ==> ={res}); 1,2: smt().
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}) (={glob C,glob O2.C.Count} ==> ={res,glob C}); 1,2: smt().
 - proc; inline*. 
   rcondt{2} 3; 1: by auto.
   rcondt{2} 6; 1: by auto; smt(emptyE).
@@ -1176,12 +1214,12 @@ transitivity O2.Game(O2real(ERO),C).main
     ); 1..4: by proc; inline*; auto => />; smt(get_setE).
   by auto => /> /=; smt(get_setE).
 transitivity K2.MainD(Dreal(C),ERO).distinguish
-  (={glob C,glob O2.C.Count} ==> ={res}) 
-  (={glob C,glob O2.C.Count} ==> ={res}); 
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}); 
     1,2: smt(); first by proc; inline*; sim.
 transitivity K2.MainD(Dreal(C),K2.RO).distinguish
-  (={glob C,glob O2.C.Count} ==> ={res}) 
-  (={glob C,glob O2.C.Count} ==> ={res}); 
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}); 
     1,2: smt(); last by proc; inline*; sim.
 have X := EK2.RO_FinRO_D _ (Dreal(C)); 1: smt(dkeyseed_ll). 
 by symmetry; conseq X; auto. 
@@ -1189,11 +1227,11 @@ qed.
 
 local equiv O2ideal_lazy (C <: O2.Adversary{K2.RO,O2.Oideal,O2ideal,O2.C.Count,K2.FRO}) :  
   O2.Game(O2.Oideal, C).main ~ O2.Game(O2ideal(K2.RO), C).main 
-  : ={glob C,glob O2.C.Count} ==> ={res}.
+  : ={glob C,glob O2.C.Count} ==> ={res, glob C}.
 proof.
 transitivity O2.Game(O2ideal(ERO),C).main 
-  (={glob C,glob O2.C.Count} ==> ={res}) 
-  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 1,2: smt().
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res,glob C}); 1,2: smt().
 - proc; inline*. 
   rcondt{2} 3; 1: by auto.
   rcondt{2} 6; 1: by auto; smt(emptyE).
@@ -1210,23 +1248,27 @@ transitivity O2.Game(O2ideal(ERO),C).main
     ); 1..4: by proc; inline*; auto => />; smt(get_setE).
   by auto => /> /=; smt(get_setE).
 transitivity K2.MainD(Dideal(C),ERO).distinguish
-  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}) 
-  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res,glob C}); 
     1,2: smt(); first by proc; inline*; sim.
 transitivity K2.MainD(Dideal(C),K2.RO).distinguish
-  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}) 
-  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res}); 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count,glob O2ideal} ==> ={res,glob C}); 
     1,2: smt(); last by proc; inline*; sim.
 have X := EK2.RO_FinRO_D _ (Dideal(C)); 1: smt(dkeyseed_ll). 
 by symmetry; conseq X; auto => />.
 qed.
 
+op bad_k' (m : (int,pkey) fmap) = 
+  exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
+
 local lemma OrealB_Guv &m : 
-  Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res] = 
-  Pr [ M1.Rand(G).main() @ &m : res.`2].
+  Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] = 
+  Pr [ M1.Rand(G).main() @ &m : res.`2 /\ !bad_k KS.m].
 proof.
-have -> : Pr[O2.Game(O2.Oreal, B(A)).main() @ &m : res] =
-          Pr[O2.Game(O2real(K2.RO), B(A)).main() @ &m : res] by byequiv (O2real_lazy (B(A))).
+have -> : Pr[O2.Game(O2.Oreal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk ] =
+          Pr[O2.Game(O2real(K2.RO), B(A)).main() @ &m : res /\ !bad_k' B.O.mpk ].
+  by byequiv (O2real_lazy (B(A))); smt().
 byequiv => //; proc; inline *. 
 wp. call (: ={u,v}(B.O,OG)  
             /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
@@ -1285,8 +1327,8 @@ wp. call (: ={u,v}(B.O,OG)
   + inline*.
     rcondf{1} 7; first by auto => /> /#.
     by auto => /> &1 &2 ? ? HK2 ? ? ? ? ? _ _; rewrite HK2 //= /#. 
-  + inline*. rcondf{1} 3; first by auto => /> /#.
-    by auto => /> &1 &2 Hmsk ? HK2 ? ? ? ? ? _ _; rewrite Hmsk //= /#. 
+  + inline*. 
+    by auto => /> &1 &2 Hmsk ? HK2 ? ? ? ? ?; rewrite Hmsk //= /#. 
 - proc. sp. inline*. if; 1,3: by auto => /#.
   if{1}. 
   + rcondt{2} 3; first by auto => />; smt(mem_map).
@@ -1296,97 +1338,273 @@ wp. call (: ={u,v}(B.O,OG)
     * wp. rnd. auto. move => />; smt(fmapP get_setE map_set). 
   + rcondf{2} 3; first by auto => />; smt(mem_map). 
     auto => />; smt(oget_map mem_map).
-auto => />; smt(map_empty emptyE).
+auto => />. progress; 1..4: smt(map_empty emptyE). 
+apply: contra H8 => -[i j] *; exists i j; smt(mapE mem_map). 
+apply: contra H8 => -[i j] *; exists i j; smt(mapE mem_map). 
+qed.
+
+
+local op p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) = 
+  u \in mpk /\ v \in mpk /\ x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v].
+
+local op q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) = 
+  u \notin mpk \/ v \notin mpk \/ x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v].
+
+local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
+proof. smt. qed.
+
+lemma mem_filter (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
+   x \in filter p m <=> x \in m /\ p x (oget m.[x]).
+proof. smt. qed.  
+
+lemma mem_filterE (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
+  x \in filter p m => (filter p m).[x] = m.[x].
+proof. smt. qed.
+
+local equiv eqv_pki_ks i : 
+  B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey ~ KS.get : 
+     arg{1} = i /\ arg{2} = i /\ 1 <= i <= n
+  /\ ! bad_k KS.m{2}
+  /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+  /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+  /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+  /\ (forall i, !(1 <= i <= n) => RO.m.[i] = None){2}
+  /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+  /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+  /\ ( B.O.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+  /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+        pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
+  ==> 
+     ! bad_k KS.m{2}
+  /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+  /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+  /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+  /\ (forall i, !(1 <= i <= n) => RO.m.[i] = None){2}
+  /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+  /\ (res{1} = pkgen res{2} /\ KS.m.[i]{2} = Some res{2})
+  /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+  /\ ( B.O.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+  /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+        pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
+  /\ res{1} = pkgen res{2} /\ KS.m.[i]{2} = Some res{2} 
+  \/ (bad_k' B.O.mpk{1} /\ bad_k KS.m{2}).
+proof.
+proc; rcondt{1} 1; first by auto => />.
+if{1}; last first.
+(* known key *)
+rcondf{2} 2; first by auto => />; smt(mem_map). 
+conseq />. auto => /> &1 &2 7?. rewrite mem_map => /fmapP [ks_i Hi] *. 
+by rewrite oget_map 1:/# /= Hi.
+(* new key *)
+rcondt{2} 2. auto => />. smt(mem_map). 
+if{1}.
+- (* sampling in O2 *)
+  inline*. rcondt{1} 4; first by auto => />; smt(mem_map).
+  auto => &1 &2 /=. 
+  rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [?] [?] i_uv ks -> /=.
+  rewrite get_set_sameE /=. 
+  case: (bad_k RO.m{2}.[x{2} <- ks]) => [bad_k | nbad_k] /=.
+    subst. case: bad_k => u v X. exists u v. 
+    rewrite !mem_set !mem_map. rewrite !mem_set in X. 
+    admit. (* boring *)
+  progress; 1..3,5,6,9..12: smt.
+  admit.
+  admit.
+  admit.
+admit.
 qed.
 
 local lemma OidealB_Guv1 &m : 
-  Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res] = 
-  Pr [ M0.Rand(G).main() @ &m : res.`2].
+  Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk ] = 
+  Pr [ M0.Rand(G).main() @ &m : res.`2 /\ !bad_k KS.m].
 proof.
-have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res] =
-          Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res] by byequiv (O2ideal_lazy (B(A))).
+(* fixme: adapt to porper up-to-bad call *)
+have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] =
+          Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res  /\ !bad_k' B.O.mpk ].
+  by byequiv (O2ideal_lazy (B(A))); smt(). 
 byequiv => //; proc; inline *. 
-pose p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) := 
-  x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v].
-pose q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) := 
-  x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v].
-
-wp. call (: ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
-            /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
-            /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
-            /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
-            /\ (forall i, !(1 <= i <= n) => B.O.mpk.[i] = None){1}
-            /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
-            /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
-            /\ ( Oideal.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
-            /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
-                 pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
-          ).
-- proc; sp; if; 1,3: by auto.
-  seq 1 1 : (#[/5:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2}). 
-  + admit.
+(* pose p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) :=  *)
+(*   x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v]. *)
+(* pose q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) :=  *)
+(*   x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v]. *)
+wp.
+call (:  bad_k KS.m, 
+         ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
+      /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+      /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+      /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+      /\ (forall i, !(1 <= i <= n) => RO.m.[i] = None){2}
+      /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+      /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+      /\ ( B.O.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+      /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+              pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1}),
+        (* B.O.mpk and KS.m may diverge after bad has been triggered, 
+           but then both bad_k' and bad_k hold and are preserved *)
+        bad_k' B.O.mpk{1} /\ bad_k KS.m{2}
+      ).
+- exact A_ll. 
+- (* encap *)
+  proc; sp; if; 1,3: by auto.
+  seq 1 1 : (#[/5:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2} 
+            \/ bad_k' B.O.mpk{1} /\ bad_k KS.m{2}). 
+  + exlim i{2} => i; call (eqv_pki_ks i); auto; smt(). 
+  case (bad_k' B.O.mpk{1} /\ bad_k KS.m{2}). 
+  + conseq (: bad_k' B.O.mpk{1} /\ bad_k KS.m{2} ==> 
+              bad_k' B.O.mpk{1} /\ bad_k KS.m{2}); 1,2: smt().
+    conseq />. 
+    seq 0 6 : true. 
+      by conseq (: true ==> _) _ (: true ==> true : =1%r); islossless. 
+    by conseq (: true ==> _) (: true ==> true : =1%r); islossless. 
+          (* (equi)termination *) 
+  conseq (: !bad_k KS.m{2} /\ ={i,pk}
+      /\ ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
+      /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+      /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+      /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+      /\ (forall i, !(1 <= i <= n) => RO.m.[i] = None){2}
+      /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+      /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+      /\ ( B.O.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+      /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+              pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
+      /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2} ==> _); 1: smt().
   sp. 
   if{1}.
   + (* challenge query (with randomized k) *)
     inline*.
     rcondf{1} 7; first by auto => /> /#.
     rcondf{1} 12. 
-      auto => /> &hr ? ? HK2 4?; rewrite find_map /= => /find_some [ksv] [? ?] *.
+      auto => /> &hr 3? HK2 2?; rewrite find_map /= => /find_some [ksv] [? ?] *.
       by rewrite fmapP; exists ksv; rewrite HK2.
     rcondf{1} 20; first by auto => /> /#.
     rcondf{1} 25; first by auto => /> /#. 
     rcondt{2} 6; first by auto => /> &1; rewrite !find_map /#.
     wp. rnd{1}; wp. rnd. auto => /> &1 &2; rewrite !find_map. progress. 
-    * rewrite H1 //=; smt(find_some). 
-    * case/find_some: H6 => ks_y [/= Hy1 Hy2]. 
-      rewrite filter_set /= {2}/p !oget_map 1,2:/# /=. rewrite H5 Hy1 Hy2 /=.
-      by have /= -> := H1 B.O.v{1};  have /= -> := H1 OG.u{2}; rewrite H5 Hy1.
-    * case/find_some: H6 => ks_y [/= Hy1 Hy2] /=.
-      rewrite filter_set /= {2}/q !oget_map 1,2:/# /=. rewrite H5 Hy1 Hy2 /=. 
-      rewrite rem_filterE /q //=. rewrite !oget_map 1,2:/#. by rewrite H5 Hy1 /=.
-    * admit.
-    * admit.
+    * rewrite H2 //=; smt(find_some). 
+    * case/find_some: H5 => ks_y [/= Hy1 Hy2]. 
+      rewrite filter_set /= {2}/p !oget_map 1,2:/# /=. 
+      rewrite [if _ /\ _ then _ else _]ifT; smt(mem_map). 
+    * case/find_some: H5 => ks_y [/= Hy1 Hy2] /=.
+      rewrite filter_set /= {2}/q !oget_map 1,2:/# /=.
+      rewrite [if _ \/ _ then _ else _]ifF. smt(mem_map). 
+      rewrite rem_filterE /q //=. rewrite !oget_map 1,2:/#. smt(mem_map).
+    * case/mem_set: H11 => [/#|]. move => />.  
+      rewrite mem_frng /rng; exists OG.u{2}; by rewrite mapE H4.
+    * case/mem_set: H11 => [/#|]. move => />.  
+      case/find_some: H5 => ks_y [/= Hy1 Hy2] /=. 
+      by rewrite mem_frng /rng; exists B.O.v{1}; rewrite mapE Hy1 /= Hy2.
    + admit.
-- admit.
+- move => &2 bk. conseq />. proc. admit. (* LHS preserves bad with Pr = 1 *)
+- move => &1. conseq/>. proc. admit. (* RHS preserves bad *)
 - proc; sp; if; 1,3: by auto => /> /#.
-  inline*; sp.
+  (* (almost) same as encap *)
+  seq 1 1 : (#[/2:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2} 
+            \/ bad_k' B.O.mpk{1} /\ bad_k KS.m{2}). 
+  + exlim i{2} => i; call (eqv_pki_ks i); auto; smt(). 
+  case (bad_k' B.O.mpk{1} /\ bad_k KS.m{2}). 
+  + conseq (: bad_k' B.O.mpk{1} /\ bad_k KS.m{2} ==> 
+              bad_k' B.O.mpk{1} /\ bad_k KS.m{2}); 1,2: smt().
+    conseq />. 
+    seq 0 2 : true. 
+      by conseq (: true ==> _) _ (: true ==> true : =1%r); islossless. 
+    by conseq (: true ==> _) (: true ==> true : =1%r); islossless. 
+    conseq (: !bad_k KS.m{2} /\ ={i,pk,c}
+      /\ ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
+      /\ (B.O.f{1} = fun i => if i = B.O.u then u1 else u2){1}
+      /\ B.O.mpk{1} = map (fun _ ks => pkgen ks) RO.m{2}
+      /\ (forall i, i <> B.O.u{1} => i <> B.O.v{1} => B.O.msk.[i]{1} = omap skgen RO.m.[i]{2})
+      /\ (forall i, !(1 <= i <= n) => RO.m.[i] = None){2}
+      /\ (forall i, i = B.O.u{1} \/ i = B.O.v{1} => K2.RO.m.[B.O.f i]{1} = RO.m.[i]{2})
+      /\ (O2ideal.m{1} = filter (p B.O.mpk B.O.u B.O.v){1} Oideal.m{2}) 
+      /\ ( B.O.m{1} = filter (q B.O.mpk B.O.u B.O.v){1} Oideal.m{2})
+      /\ (forall pki pkj c, (pki,pkj,c) \in Oideal.m{2} =>
+              pki \in frng B.O.mpk{1} /\ pkj \in frng B.O.mpk{1})
+      /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2} ==> _); 1: smt().
+  conseq />. (* we no longer sample keys (also not in O2) *)
+  sp 0 1; if{1}. 
+  + (* log hit in B *) 
+    rcondt{2} 1; first by auto => />; smt(mem_filter).
+    auto => /> &1 &2 6?. exact mem_filterE. 
   if{1}. 
-  + rcondt{2} 2. auto => />; smt(mem_map).
-    if{1}. 
-    * rcondt{1} 4; 1: by auto => />; smt(fmapP mem_map oget_map).
-      wp. rnd. auto. move => &1 &2 /> ? ? HK2 Ex1 Ex2 R *. 
-      pose u := if i{2} = OG.u{2} then u1 else u2.
-      rewrite !get_set_sameE /= map_set /=. 
-      do ! split; 1..3: smt(get_setE).  
-      pose mpk := map (fun (_ : int) (ks : keyseed) => pkgen ks) RO.m{2}. 
-      move: Ex1 Ex2 R; rewrite -/mpk => Ex1 Ex2 R. 
-      have iNmpk : i{2} \notin mpk by done. 
-      apply: eq_in_filter => @/p -[pki pkj c k] /get_mem /Ex1 /=.
-      rewrite get_setE. 
-      admit.
-      admit.
-      admit.
-    admit.
-    admit.
-- admit.
+  + (* receiver (i) is either u or v *)
+    inline O2.C.Count(O2ideal(K2.RO)).decap O2ideal(K2.RO).decap.
+    (* since pki was obtained, no sampling occurs in O2.decap *)
+    inline O2ideal(K2.RO).skey K2.RO.get. rcondf{1} 7. 
+      move => &2. auto => &1 /> 3? HK2 3? Hi. 
+      have := HK2 i{2} Hi. smt().
+    inline O2ideal(K2.RO).pkey K2.RO.get. rcondf{1} 12. 
+      move => &2. auto => &1 /> 3? HK2 3? Hi. 
+      have := HK2 i{2} Hi. smt(). 
+    conseq />. (* really no more key sampling *)
+    if{2}. 
+    (* log hit *)
+      admit.      
+    (* honest decapsulation *)
+    rcondf{1} 14. 
+      move => &2. auto => &1 /> 3? HK2 ? m_i ? Hi *. 
+      have /= -> := HK2 _ Hi. smt(mem_filter).
+    auto => /> &1 &2 3? HK2 ? m_i ? Hi *. have /= -> /# := HK2 _ Hi. 
+  (* no log hit in B and no O2 query *)
+  rcondf{2} 1.
+    (* a log hit in Oideal would require pkey collision *)
+    move=> &1. auto => /> &2 /> Hbad 2? HK2 ? m_i X Hi. 
+    apply: contra X. rewrite mem_filter /q => /> c_m. 
+    apply: contraR Hbad. rewrite !mem_map !negb_or !negbK.
+    move => /> /fmapP [ks_u m_u] /fmapP [ks_v m_v]. 
+    rewrite oget_map 1:/# m_v /= => coll_ks_v. 
+    exists i{1} B.O.v{1}. smt().
+  auto => /> &1 &2 ? Hmsk 3? m_i *. by rewrite Hmsk 1,2:/# m_i.
+- admit. (* LHS preserves bad *)
+- admit. (* RHS preserves bad *)
+- proc*. inline OG.pkey. 
+  sp. if{2}. 
+  + exlim i0{2} => i. wp. call (eqv_pki_ks i). auto. smt(). 
+  + inline B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey. sp. 
+    rcondf{1} 1; first by auto => /> /#. 
+    auto => />. move => &1 &2 2? Hout *. by rewrite mapE Hout.
+- admit. (* LHS preserves bad *)
+- admit. (* RHS preserves bad *)
+- admit. (* set up invariant *)
 qed.
 
 local lemma G_shift &m u : 1 <= u < n =>
-  Pr [G.work(u,n) @ &m : res] = Pr [G.work(u+1,0) @ &m : res].
-admitted.
+  Pr [G.work(u,n) @ &m : res /\ !bad_k KS.m ] = 
+  Pr [G.work(u+1,0) @ &m : res /\ !bad_k KS.m].
+proof.
+move => I1n. 
+byequiv => //; proc; inline*. 
+call(: ={RO.m,Oideal.m} 
+     /\ (OG.u = u /\ OG.v = n){1} 
+     /\ (OG.u = u+1 /\ OG.v = 0){2} 
+     /\ (forall i, i \in fdom RO.m{1} => 1 <= i <= n)).
+- proc; inline*; sp; if; [smt()| |by auto].
+  seq 7 7 : (#[/5:]pre /\ ={c,k,ks}). 
+    by auto => />; smt(fdom_set in_fsetU1).
+  sp; if; 2,3: (by auto => />); move => /> &2.
+  case (findP (fun (_ : int) (ks : keyseed) => pk{2} = pkgen ks) RO.m{2}) => [-> //|]. 
+  move => j ks_j -> /= m_j pk_j /(_ j _); smt. 
+- proc; inline*; sp; if; [smt()| |by auto].
+  seq 5 5 : (#[/3:]pre /\ ={ks,pki}). 
+    by auto => />; smt(fdom_set in_fsetU1).
+  by if; auto => />.
+- proc; inline*; sp; if; [smt()| |by auto].
+  by auto => />; smt(fdom_set in_fsetU1).
+auto => />; smt(fdom0 in_fset0).
+qed.
 
 lemma lemma3 &m : 
-  `| Pr[ Game(Oreal ,A).main() @ &m : res ] - 
-     Pr[ Game(Oideal,A).main() @ &m : res] |
-=  (n^2)%r * `| Pr[ O2.Game(O2.Oreal ,B(A)).main() @ &m : res] - 
-                Pr[ O2.Game(O2.Oideal,B(A)).main() @ &m : res]|.
+  `| Pr[ Game(Oreal ,A).main() @ &m : res /\ !bad_k KS.m] - 
+     Pr[ Game(Oideal,A).main() @ &m : res /\ !bad_k KS.m] |
+=  (n^2)%r * `| Pr[ O2.Game(O2.Oreal ,B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] - 
+                Pr[ O2.Game(O2.Oideal,B(A)).main() @ &m : res /\ !bad_k' B.O.mpk]|.
 proof.
 rewrite Oreal_Gnn Oideal_G10 OrealB_Guv OidealB_Guv1.
 have fin_prod : forall a b, is_finite (support ([1..n] `*` [a..b])). admit.
-have -> /= := M1.Mean_uni G &m (fun _ _ b => b) (1%r/(n^2)%r) _ _.
+have -> /= := M1.Mean_uni G &m (fun _ (gG:glob G) b => b /\ !bad_k gG.`4) (1%r/(n^2)%r) _ _.
 - admit.
 - exact fin_prod.
-have -> /= := M0.Mean_uni G &m (fun _ _ b => b) (1%r/(n^2)%r) _ _.
+have -> /= := M0.Mean_uni G &m (fun _ (gG:glob G) b => b /\ !bad_k gG.`4) (1%r/(n^2)%r) _ _.
 - admit.
 - exact fin_prod.
 pose s1 := to_seq _; pose s0 := to_seq _.
@@ -1396,8 +1614,8 @@ rewrite (big_rem _ _ s1 (n,n)) {1}/predT /=. admit.
 rewrite (big_rem _ _ s0 (1,0)) {2}/predT /=. admit.
 rewrite -StdOrder.RealOrder.normrZ. smt.
 rewrite RField.mulrBr ![(n^2)%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1:smt.
-suff -> : big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res]) (rem (n, n) s1)
-        = big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res]) (rem (1, 0) s0).
+suff -> : big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res /\ !bad_k RO.m]) (rem (n, n) s1)
+        = big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res /\ !bad_k RO.m]) (rem (1, 0) s0).
 by have -> : forall (a b c : real), b + a - (c + a) = b - c by smt().
 pose f (v : int * int) := if v.`2 = n then (v.`1+1,0) else v.
 pose g (v : int * int) := if v.`2 = 0 then (v.`1-1,n) else v.
@@ -1432,7 +1650,7 @@ proof.
 have l2 := O2.lemma2 (B(A)) _ _ &m.
 - admit. (* B(A) is lossless *)
 - admit. (* B(A) stays within the query bound *)
-by rewrite lemma3 l2 /#.
+- admit. (* fixme: take care of bad event / by rewrite lemma3 l2 /#. *)
 qed.
 
 (* ... and B11 makes at most 2*qe queries to encap, at most qd queries
