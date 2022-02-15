@@ -1,15 +1,45 @@
 require import AllCore List Finite Distr DBool DInterval DList LorR FSet SmtMap.
 require (****) PROM Means.
 
-(* preliminaries *)
+(* * Preliminaries *)
 
+(* Logic.ec *)
+lemma ifT (b : bool) (e1 e2 : 'a) : b => (if b then e1 else e2) = e1. 
+proof. smt(). qed.
+
+lemma ifF (b : bool) (e1 e2 : 'a) : !b => (if b then e1 else e2) = e2. 
+proof. smt(). qed.
+
+lemma omap_some (ox : 'a option) (y : 'b) (f : 'a -> 'b) : 
+  omap f ox = Some y => exists x, ox = Some x /\ f x = y. 
+proof. by case: ox => /#. qed.
+
+(* List.ec *)
+lemma uniq_mem_rem (y x : 'a) (s : 'a list) : 
+  uniq s => y \in rem x s <=> y \in s /\ y <> x.
+proof. by elim: s => //= /#. qed.
+
+(* Distr.ec *)
+lemma finite_dprod (d1 d2 : 'a distr) : 
+  is_finite (support d1) => is_finite (support d2) => 
+  is_finite (support (d1 `*` d2)).
+proof.
+move=> fin_d1 fin_d2; rewrite dprod_dlet finite_dlet // => x x_d1.
+by apply finite_dlet => // y y_d2; apply finite_dunit.
+qed.
+
+(* DInterval.ec *)
 lemma finite_dinter (a b : int) : is_finite (support [a..b]).
 proof.
 rewrite is_finiteE; exists (range a (b+1)).
 by rewrite range_uniq /= => x; rewrite mem_range supp_dinter /#.
 qed.
 
-lemma supp_range (a b : int) : 
+lemma supp_dinter1E (x : int) (a b : int) :
+  x \in [a..b] => mu1 [a..b] x = 1%r / (b - a + 1)%r.
+proof. by rewrite supp_dinter dinter1E => ->. qed.
+
+lemma perm_eq_dinter (a b : int) : 
   perm_eq (to_seq (support [a..b])) (range a (b+1)).
 proof. 
 apply: uniq_perm_eq; first exact/uniq_to_seq/finite_dinter.
@@ -17,15 +47,12 @@ apply: uniq_perm_eq; first exact/uniq_to_seq/finite_dinter.
 by move=> x; rewrite mem_to_seq ?finite_dinter // supp_dinter mem_range /#.
 qed.
 
-lemma supp_range_pred (a b : int) : 
+lemma perm_eq_dinter_pred (a b : int) : 
   perm_eq (to_seq (support [a..b-1])) (range a b).
-proof. by have /# := supp_range a (b-1). qed.  
+proof. by have /# := perm_eq_dinter a (b-1). qed.  
 
-lemma supp_dinter1E (x : int) (a b : int) :
-  x \in [a..b] => mu1 [a..b] x = 1%r / (b - a + 1)%r.
-proof. by rewrite supp_dinter dinter1E => ->. qed.
-
-lemma find_map (m : ('a, 'b) fmap) (f : 'a -> 'b -> 'c) (P : 'a -> 'c -> bool) : 
+(* SmtMap.ec *)
+lemma find_map (m : ('a, 'b) fmap) (f : 'a -> 'b -> 'c) P : 
   find P (map f m) = find (fun x y => P x (f x y)) m.
 proof.
 rewrite !findE fdom_map; congr; apply find_eq_in => x /=.
@@ -36,26 +63,9 @@ lemma find_not_none (P : 'a -> 'b -> bool) (m : ('a,'b) fmap) :
   find P m <> None => exists x y, find P m = Some x /\ m.[x] = Some y /\ P x y.
 proof. by case: (findP P m) => // x y ? ? ? _; exists x y. qed.
 
-lemma uniq_mem_rem (y x : 'a) (s : 'a list) : 
-  uniq s => y \in rem x s <=> y \in s /\ y <> x.
-proof. by elim: s => //= /#. qed.
-
-lemma finite_dprod (d1 d2 : 'a distr) : 
-  is_finite (support d1) => is_finite (support d2) => is_finite (support (d1 `*` d2)).
-proof.
-move=> fin_d1 fin_d2; rewrite dprod_dlet finite_dlet // => x x_d1.
-by apply finite_dlet => // y y_d2; apply finite_dunit.
-qed.
-
 lemma oget_map (m : ('a,'b) fmap) (f : 'a -> 'b -> 'c) i :
   i \in m => oget (map f m).[i] = f i (oget m.[i]).
 proof. by rewrite mapE fmapP => -[y ->]. qed.
-
-lemma ifT (b : bool) (e1 e2 : 'a) : b => (if b then e1 else e2) = e1. 
-proof. smt(). qed.
-
-lemma ifF (b : bool) (e1 e2 : 'a) : !b => (if b then e1 else e2) = e2. 
-proof. smt(). qed.
 
 lemma rem_filterE (m : ('a,'b) fmap) x (p : 'a -> 'b -> bool) :
   (forall y, !p x y) => rem (filter p m) x = filter p m.
@@ -69,10 +79,6 @@ lemma eq_in_filter ['a 'b] (p1 p2 : 'a -> 'b -> bool) (m : ('a,'b) fmap) :
 proof. 
 move=> eq_p; apply/fmap_eqP => x; rewrite !filterE /#.
 qed.
-
-lemma get_mem (m : ('a,'b) fmap) x y : 
-  m.[x] = Some y => x \in m.
-proof. smt(). qed.
 
 lemma find_none (p : 'a -> 'b -> bool) (m : ('a,'b) fmap): 
   (forall x, x \in m => !p x (oget m.[x])) => find p m = None.
@@ -104,10 +110,6 @@ lemma mem_filterE (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x :
   x \in filter p m => (filter p m).[x] = m.[x].
 proof. smt. qed.
 
-lemma omap_some (ox : 'a option) (y : 'b) (f : 'a -> 'b) : 
-  omap f ox = Some y => exists x, ox = Some x /\ f x = y. 
-proof. by case: ox => /#. qed.
-
 lemma filter_empty (p:'a -> 'b -> bool) : filter p empty = empty.
 proof. by apply/fmap_eqP => x; rewrite filterE emptyE. qed.
 
@@ -135,24 +137,22 @@ qed.
 
 (* end preliminaries *)
 
+(**********************************************)
+(* Authenticated Key Encapsulation Mechanisms *)
+(**********************************************)
 
 type keyseed.
 type pkey.
 type skey.
+type encseed.
 type key.
 type ciphertext.
 
 op [lossless] dkeyseed : keyseed distr.
-op [lossless] dkey : key distr.
+op [lossless] dencseed : encseed distr.
 
 op pkgen : keyseed -> pkey.
 op skgen : keyseed -> skey.
-
-op pk_coll n = mu (dlist dkeyseed n) (fun ks => !uniq (map pkgen ks)).
-
-
-type encseed.
-op [lossless] dencseed : encseed distr.
 
 op encap : encseed -> skey -> pkey -> ciphertext * key.
 op decap : skey -> pkey -> ciphertext -> key option.
@@ -161,11 +161,16 @@ axiom encapK (ks1 ks2 : keyseed) (es : encseed) :
   let (c,k) = encap es (skgen ks1) (pkgen ks2) in
   decap (skgen ks2) (pkgen ks1) c = Some k.
 
+
+op [lossless] dkey : key distr.
+op pk_coll n = mu (dlist dkeyseed n) 
+                  (fun ks => !uniq (map pkgen ks)).
+
 (********************************************)
 (** * 2-participant version of Outsider-CCA *)
 (********************************************)
 
-(* participants *)
+(* A finite type for the two participants/users *)
 type user = [u1|u2].
 
 clone import FinType.FinType as UserFinType with
@@ -680,8 +685,8 @@ have /= -> := M1.Mean_uni G &m ev (1%r/qc%r) _ (finite_dinter 1 qc).
 have /= -> := M0.Mean_uni G &m ev (1%r/qc%r) _ (finite_dinter 0 (qc-1)). 
   by move=> x /supp_dinter1E -> /#.
 rewrite /ev /=.
-rewrite (eq_big_perm _ _ _ _ (supp_range 1 qc)).
-rewrite (eq_big_perm _ _ _ _ (supp_range_pred 0 qc)).
+rewrite (eq_big_perm _ _ _ _ (perm_eq_dinter 1 qc)).
+rewrite (eq_big_perm _ _ _ _ (perm_eq_dinter_pred 0 qc)).
 rewrite [range 0 _]range_ltn 1:#smt big_cons {2}/predT /=. 
 rewrite rangeSr 1:#smt big_rcons {1}/predT /=.
 rewrite -StdOrder.RealOrder.normrZ. smt.
@@ -757,6 +762,10 @@ module Game (O : Oracle_i, A : Adversary) = {
   }
 }.
 
+(* We are formalizing an on-line version of the Outsider-CCA game,
+where the participants are created on-demand. This is relegated to a
+PROM which manages the keyseeds of the participants, and from which we
+derive keys as needed *)
 clone import PROM.FullRO as K with
   type in_t    <- int,
   type out_t   <- keyseed,
@@ -766,7 +775,7 @@ clone import PROM.FullRO as K with
 proof*.
 module KS = K.RO.
 
-(* We don't want to use an oracle at this point 
+(* We don't want to use an oracle for encseeds at this point 
 clone import PROM.FullRO as E with
   type in_t    <- int,
   type out_t   <- encseed,
@@ -822,9 +831,7 @@ module Oreal : Oracle_i = {
 }.
 
 (* The "ideal" game: we radmomize the shared key if the revceiver
-public key belongs to a participant of the game. Note that KS.allKnown
-returns only the keyseeds that have acutally been returned by KS.get,
-keys that have merely been sampled are ignored. *)
+public key belongs to a participant of the game. *)
 module Oideal : Oracle_i = { 
   include Oreal [pkey]
   var m : (pkey * pkey * ciphertext, key) fmap
@@ -878,8 +885,14 @@ clone Outsider2CCA as O2 with
   axiom qc_gt0 = qe_gt0
 proof*.
 
-(* B is an adversary against the Outsider-2-CCA game, which does not
-use KS or ES. Hence, we can reuse them here. *)
+(* B is an adversary against the Outsider-2-CCA game. The latter does
+not not use KS. Hence, we can use KS to manange keyseeds in B. In
+addition, B maintains (redundant) maps from int (user IDs) to public
+keys ([mpk]) and (where known) also sekret keys ([msk]). The reason for
+this is that two randomly chosen public keys are generated by the 2p
+game, making the [pkey] and [skey] procedures cumbersome to reason
+about. Moreover, having [mpk] simiplifies reasoning about the bad
+event (i.e., collisions among public keys) *)
 module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
   module O = {
     var u,v : int
@@ -984,10 +997,6 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
 
 section PROOF.
 
-(* bad key event: there are two participants i and j sharing a public key *)
-op bad_k (m : (int, keyseed) fmap) = fcoll pkgen m.
-
-
 declare module A <: Adversary{Oreal,Oideal,Count,B,
                               O2.C.Count, O2.Oreal, O2.Oideal,O2.B, O2.CB.Count}.
 
@@ -997,6 +1006,39 @@ declare axiom A_ll : forall (O <: Oracle{A}),
   islossless O.pkey =>
   islossless A(O).guess.
 
+(* We define an indexed collection of games G_{u,v} where 1<=u<=n
+and 0<=v<= n. We will then prove 4 main lemmas:
+
+1) G_{n,n} perfectly simulates Game(Oreal,A)
+2) G_{1,0} perfectly simulates Game(Oideal,A)
+3) O2.Game(O2real,B(A)) can be simulated by 
+   sampling 1<=u,v<=n randomly and then running G_{u,v}
+4) O2.Game(O2ideal,B(A)) can be simulated by 
+   sampling 1<=u<=n and 0<=v<=n-1 randomly and then running G_{u,v}
+   (which is equivalent to sampling 1<=u,v<=n then running G_{u,v-1})
+5) G_{u,n} perfectly simulates G_{u+1,0} whenever 1 <= u < n
+
+Here, O2real and O2ideal are variants of the 2p games where, as in the
+n-participant games, keys are generated on-demand. For (3) and (4) it
+is convenient to express G_{u,v} as a [Worker] module for the [Means]
+game, allowing us to apply the [Mean_uni] lemma. 
+
+For all five claims, we prove the equivalence assuming that there are
+no collisions among the public keys. However, only the proof of Claim
+4 depends on this *)
+
+(* bad key event: there are two participants i and j sharing a public
+key (i.e. sharing keyseeds leading to the same public key *)
+op bad_k (m : (int, keyseed) fmap) = fcoll pkgen m.
+
+(* For the adversary B, this corresponds to a collision in [mpk] *)
+op bad_k' (m : (int,pkey) fmap) = 
+  exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
+
+local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
+proof. smt. qed.
+
+(* Need two clones, since the distribution is an operator of the theory *)
 local clone Means as M1 with
   type input <- int * int,
   type output <- bool,
@@ -1049,6 +1091,7 @@ local module G : M1.Worker = {
   }
 }.
 
+(* Claim 1 *)
 local lemma Oreal_Gnn &m : 
   Pr[ Game(Oreal ,A).main() @ &m : res /\ !bad_k KS.m ] = 
   Pr[ G.work(n,n) @ &m : res /\ !bad_k KS.m ].
@@ -1069,6 +1112,7 @@ call(: OG.u{2} = n /\ OG.v{2} = n /\ ={KS.m} /\ (Oideal.m = empty){2} /\
 auto => />; smt(mem_empty).
 qed.
 
+(* Claim 2 *)
 local lemma Oideal_G10 &m : 
    Pr[ Game(Oideal ,A).main() @ &m : res /\ !bad_k KS.m ] = 
    Pr[ G.work(1,0) @ &m : res /\ !bad_k KS.m ].
@@ -1088,6 +1132,11 @@ call(: OG.u{2} = 1 /\ OG.v{2} = 0 /\ ={KS.m, Oideal.m} /\
 - proc; inline*; sp; if; 1,3: by auto. auto => />; smt(mem_set).
 auto => />; smt(mem_empty).
 qed.
+
+(* For Claims (3) and (4), we first need to show the equivalence
+bewtween the standard (offline) 2p game (i.e., where the two keypairs
+are sampled initially) and an online version where keys are sampled
+on-demand. *)
 
 local clone PROM.FullRO as K2 with
   type in_t    <- user,
@@ -1153,6 +1202,7 @@ local module O2real(K2 : K2.RO) : O2.Oracle_i = {
 
 }.
 
+(* Variant of the 2p ideal game where the keys are handled by an oracle *)
 local module O2ideal (K2 : K2.RO) : O2.Oracle_i = {
   include var O2real(K2)[-init,chall,decap]
   var m : (pkey * pkey * ciphertext, key) fmap
@@ -1190,6 +1240,10 @@ local module O2ideal (K2 : K2.RO) : O2.Oracle_i = {
   }
 }.
 
+(* To prove the equivalences, we express both sides as
+[FinRO_Distinguisher] and then use the [RO_FinRO_D] lemma to
+transition from an eager oracle to a lazy one *)
+
 local module (Dreal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) = {
   proc distinguish() = {
     var r;
@@ -1199,22 +1253,13 @@ local module (Dreal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) =
   }
 }.
 
-local module (Dideal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) = {
-  proc distinguish() = {
-    var r;
-    O2ideal.m <- empty;
-    O2.C.Count(O2ideal(K2)).init();
-    r <@ C(O2.C.Count(O2ideal(K2))).guess();
-    return r;
-  }
-}.
-
 local equiv O2real_lazy (C <: O2.Adversary{K2.RO,O2.Oreal,O2real,O2.C.Count,K2.FRO}) :
   O2.Game(O2.Oreal, C).main ~ O2.Game(O2real(K2.RO), C).main 
   : ={glob C,glob O2.C.Count} ==> ={res,glob C}.
 proof.
 transitivity O2.Game(O2real(ERO),C).main 
-  (={glob C,glob O2.C.Count} ==> ={res,glob C}) (={glob C,glob O2.C.Count} ==> ={res,glob C}); 1,2: smt().
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}) 
+  (={glob C,glob O2.C.Count} ==> ={res,glob C}); 1,2: smt().
 - proc; inline*. 
   rcondt{2} 3; 1: by auto.
   rcondt{2} 6; 1: by auto; smt(emptyE).
@@ -1240,6 +1285,16 @@ transitivity K2.MainD(Dreal(C),K2.RO).distinguish
 have X := EK2.RO_FinRO_D _ (Dreal(C)); 1: smt(dkeyseed_ll). 
 by symmetry; conseq X; auto. 
 qed.
+
+local module (Dideal (C : O2.Adversary) : EK2.FinRO_Distinguisher) (K2 : K2.RO) = {
+  proc distinguish() = {
+    var r;
+    O2ideal.m <- empty;
+    O2.C.Count(O2ideal(K2)).init();
+    r <@ C(O2.C.Count(O2ideal(K2))).guess();
+    return r;
+  }
+}.
 
 local equiv O2ideal_lazy (C <: O2.Adversary{K2.RO,O2.Oideal,O2ideal,O2.C.Count,K2.FRO}) :  
   O2.Game(O2.Oideal, C).main ~ O2.Game(O2ideal(K2.RO), C).main 
@@ -1275,9 +1330,7 @@ have X := EK2.RO_FinRO_D _ (Dideal(C)); 1: smt(dkeyseed_ll).
 by symmetry; conseq X; auto => />.
 qed.
 
-op bad_k' (m : (int,pkey) fmap) = 
-  exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
-
+(* Claim 3 *)
 local lemma OrealB_Guv &m : 
   Pr [ O2.Game(O2.Oreal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] = 
   Pr [ M1.Rand(G).main() @ &m : res.`2 /\ !bad_k KS.m].
@@ -1359,6 +1412,28 @@ apply: contra H8 => -[i j] *; exists i j; smt(mapE mem_map).
 apply: contra H8 => -[i j] *; exists i j; smt(mapE mem_map). 
 qed.
 
+(*** Claim 4 ***) 
+
+(* For Claim 4 we need to maintain the connection between the log of
+randomized encapsulation queries in the Oideal game on the one side
+and the log maintained by B (for queries it randomizes) and the log
+maintained by O2ideal for the randomized challenge queries. Note that
+the logging is based on public keys, and those are only sampled during
+the game. 
+
+More precisely, an entry (pki,pkj,c) gets logged to O2ideal when the
+keys for both u and v (u and v being sampled by B) have already been
+sampled, and pki (pkj) is the public key of participant u (v). All
+other queries are logged by B itself 
+
+The absence of public key collisions is required to ensure that the
+mapping between (active) users and public keys remains bijective. This
+ensures that the stored answers (c,k) to [encap(i,pk_j)] are correctly
+retrieved when answering queries to [decap(j,pk_i,c)].
+
+Moreover, this is required to rule out that queries already logged in
+B are suddenly in the wrong log if u or v gets assigned a pre-existing
+public key, or the other way around for queries logged in O2ideal *)
 
 local op p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) = 
   u \in mpk /\ v \in mpk /\ x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v].
@@ -1366,9 +1441,9 @@ local op p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) =
 local op q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) = 
   u \notin mpk \/ v \notin mpk \/ x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v].
 
-local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
-proof. smt. qed.
-
+(* We first show that sampling a new public key preserves the
+invariants on the keyseed oracles, the logs, as well as as [mpk] and
+[msk]. This is used multiple times *)
 local equiv eqv_pki_ks i : 
   B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey ~ KS.get : 
      arg{1} = i /\ arg{2} = i /\ 1 <= i <= n
@@ -1453,6 +1528,7 @@ if{1}.
     rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set. smt.
 qed.
 
+(* sampling new keys perserves key collisions - B.pkey *)
 local lemma pkey_bad' : 
   hoare [B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey : bad_k' B.O.mpk ==> bad_k' B.O.mpk].
 proof.
@@ -1462,6 +1538,7 @@ inline*; seq 6 : #pre; first by auto.
 auto => &m /> i j *. exists i j; smt(mem_set get_setE).
 qed.
 
+(* sampling new keys perserves key collisions -KS.get *)
 local lemma get_bad : hoare [KS.get : bad_k KS.m ==> bad_k KS.m ].
 proof. 
 proc; seq 1 : #pre; first by auto. 
@@ -1469,11 +1546,11 @@ if; last by auto.
 auto => &m /> i j *; exists i j; smt(mem_set get_setE).
 qed.
 
+(* Claim 4 *)
 local lemma OidealB_Guv1 &m : 
   Pr [ O2.Game(O2.Oideal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk ] = 
   Pr [ M0.Rand(G).main() @ &m : res.`2 /\ !bad_k KS.m].
 proof.
-(* fixme: adapt to porper up-to-bad call *)
 have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] =
           Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res  /\ !bad_k' B.O.mpk ].
   by byequiv (O2ideal_lazy (B(A))); smt(). 
@@ -1683,6 +1760,7 @@ have -> /= : bad_k empty = false by smt(mem_empty).
 do ! split; 1..8: smt(map_empty emptyE filter_empty); smt.
 qed.
 
+(* Claim 5 *)
 local lemma G_shift &m u : 1 <= u < n =>
   Pr [G.work(u,n) @ &m : res /\ !bad_k KS.m ] = 
   Pr [G.work(u+1,0) @ &m : res /\ !bad_k KS.m].
@@ -1708,6 +1786,7 @@ call(: ={RO.m,Oideal.m}
 auto => />; smt(fdom0 in_fset0).
 qed.
 
+(* Putting everything together *)
 lemma lemma3 &m : 
   `| Pr[ Game(Oreal ,A).main() @ &m : res /\ !bad_k KS.m] - 
      Pr[ Game(Oideal,A).main() @ &m : res /\ !bad_k KS.m] |
