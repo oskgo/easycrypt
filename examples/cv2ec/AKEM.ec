@@ -74,6 +74,53 @@ lemma get_mem (m : ('a,'b) fmap) x y :
   m.[x] = Some y => x \in m.
 proof. smt(). qed.
 
+lemma find_none (p : 'a -> 'b -> bool) (m : ('a,'b) fmap): 
+  (forall x, x \in m => !p x (oget m.[x])) => find p m = None.
+proof. by move=> np; apply contraT => /find_not_none /#. qed.
+
+lemma nosmt uniq_find_some z (P : 'a -> 'b -> bool) (m : ('a, 'b) fmap) :
+  (forall (x : 'a) (y : 'b), m.[x] = Some y => P x y => x = z) =>
+  z \in m => P z (oget m.[z]) => find P m = Some z.
+proof.
+move => uniq_m z_m p_z; case (findP P m) => [/#|x y fmx mx p_xy]. 
+by have <- := find_some_unique _ _ _ _ uniq_m fmx.
+qed.
+
+lemma nosmt uniq_find_set (p : 'a -> 'b -> bool) (m : ('a,'b) fmap) x y : 
+  (forall x1 x2, x1 \in m => x2 \in m => 
+    p x1 (oget m.[x1]) => p x2 (oget m.[x2]) => x1 = x2) =>
+  x \notin m => !p x y => find p m.[x <- y] = find p m.
+proof.
+move=> x_m uniq_m p_xy. case (findP p m) => [-> npm|a b E m_a p_ab]. 
+- apply find_none; smt(mem_set get_setE).
+rewrite E. apply uniq_find_some; smt(mem_set get_setE). 
+qed.
+
+lemma mem_filter (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
+   x \in filter p m <=> x \in m /\ p x (oget m.[x]).
+proof. smt. qed.  
+
+lemma mem_filterE (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
+  x \in filter p m => (filter p m).[x] = m.[x].
+proof. smt. qed.
+
+lemma omap_some (ox : 'a option) (y : 'b) (f : 'a -> 'b) : 
+  omap f ox = Some y => exists x, ox = Some x /\ f x = y. 
+proof. by case: ox => /#. qed.
+
+lemma filter_empty (p:'a -> 'b -> bool) : filter p empty = empty.
+proof. by apply/fmap_eqP => x; rewrite filterE emptyE. qed.
+
+
+(* f-collisions (i.e. collisions under some function f) *)
+op fcoll (f : 'b -> 'c) (m : ('a,'b) fmap)  =
+  exists i j, i \in m /\ j \in m /\ i <> j /\ 
+              f (oget m.[i]) = f (oget m.[j]).
+
+lemma fcollPn (f : 'b -> 'c) (m : ('a,'b) fmap) : 
+    !fcoll f m <=> 
+    forall i j, i \in m => j \in m => i <> j => f (oget m.[i]) <> f (oget m.[j]).
+proof. smt(). qed.
 
 require StdBigop.
 import StdBigop.Bigreal.BRA.
@@ -114,10 +161,9 @@ axiom encapK (ks1 ks2 : keyseed) (es : encseed) :
   let (c,k) = encap es (skgen ks1) (pkgen ks2) in
   decap (skgen ks2) (pkgen ks1) c = Some k.
 
-(* module type Scheme = { *)
-(*   proc encap(sender : skey, receiver : pkey)  : ciphertext * key *)
-(*   proc decap(receiver : skey, sender : pkey, c:ciphertext) : key option *)
-(* }. *)
+(********************************************)
+(** * 2-participant version of Outsider-CCA *)
+(********************************************)
 
 (* participants *)
 type user = [u1|u2].
@@ -647,8 +693,9 @@ end section PROOF.
   
 end Outsider2CCA.
 
-
+(********************************************)
 (** * n-participant version of Outsider-CCA *)
+(********************************************)
 
 theory OutsiderCCA.
 
@@ -934,37 +981,6 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
     return r;
   }
 }.
-
-op fcoll (f : 'b -> 'c) (m : ('a,'b) fmap)  =
-  exists i j, i \in m /\ j \in m /\ i <> j /\ 
-              f (oget m.[i]) = f (oget m.[j]).
-
-lemma fcollPn (f : 'b -> 'c) (m : ('a,'b) fmap) : 
-    !fcoll f m <=> 
-    forall i j, i \in m => j \in m => i <> j => f (oget m.[i]) <> f (oget m.[j]).
-proof. smt(). qed.
-
-lemma find_none (p : 'a -> 'b -> bool) (m : ('a,'b) fmap): 
-  (forall x, x \in m => !p x (oget m.[x])) => find p m = None.
-proof. by move=> np; apply contraT => /find_not_none /#. qed.
-
-lemma uniq_find_some z (P : 'a -> 'b -> bool) (m : ('a, 'b) fmap) :
-  (forall (x : 'a) (y : 'b), m.[x] = Some y => P x y => x = z) =>
-  z \in m => P z (oget m.[z]) => find P m = Some z.
-proof.
-move => uniq_m z_m p_z; case (findP P m) => [/#|x y fmx mx p_xy]. 
-by have <- := find_some_unique _ _ _ _ uniq_m fmx.
-qed.
-
-lemma uniq_find_set (p : 'a -> 'b -> bool) (m : ('a,'b) fmap) x y : 
-  (forall x1 x2, x1 \in m => x2 \in m => 
-    p x1 (oget m.[x1]) => p x2 (oget m.[x2]) => x1 = x2) =>
-  x \notin m => !p x y => find p m.[x <- y] = find p m.
-proof.
-move=> x_m uniq_m p_xy. case (findP p m) => [-> npm|a b E m_a p_ab]. 
-- apply find_none; smt(mem_set get_setE).
-rewrite E. apply uniq_find_some; smt(mem_set get_setE). 
-qed.
 
 section PROOF.
 
@@ -1353,14 +1369,6 @@ local op q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) =
 local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
 proof. smt. qed.
 
-lemma mem_filter (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
-   x \in filter p m <=> x \in m /\ p x (oget m.[x]).
-proof. smt. qed.  
-
-lemma mem_filterE (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
-  x \in filter p m => (filter p m).[x] = m.[x].
-proof. smt. qed.
-
 local equiv eqv_pki_ks i : 
   B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey ~ KS.get : 
      arg{1} = i /\ arg{2} = i /\ 1 <= i <= n
@@ -1401,17 +1409,64 @@ if{1}.
 - (* sampling in O2 *)
   inline*. rcondt{1} 4; first by auto => />; smt(mem_map).
   auto => &1 &2 /=. 
-  rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [?] [?] i_uv ks -> /=.
+  rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [logP] [iNm] i_uv ks -> /=.
   rewrite get_set_sameE /=. 
   case: (bad_k RO.m{2}.[x{2} <- ks]) => [bad_k | nbad_k] /=.
     subst. case: bad_k => u v X. exists u v. 
     rewrite !mem_set !mem_map. rewrite !mem_set in X. 
-    admit. (* boring *)
-  progress; 1..3,5,6,9..12: smt.
-  admit.
-  admit.
-  admit.
-admit.
+    rewrite !get_setE !mapE /=. smt. 
+  do ! split; 1..7,10..12: smt. 
+  + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
+    rewrite mem_map in iNm. rewrite /p !mem_map /=.
+    case: i_uv => ?; subst; rewrite iNm /=. 
+    * apply: contra nbad_k. rewrite get_set_sameE /= => -[_] [_] [Hi] _.
+      have [/mem_frng @/rng [x]] := logP pki pkj c _;1: smt(). 
+      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]] _. exists B.O.u{1} x; smt.
+    * apply: contra nbad_k. rewrite get_set_sameE /= => -[_] [_] [_] Hi.
+      have [_ /mem_frng @/rng [x]] := logP pki pkj c _;1: smt(). 
+      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]]. exists B.O.v{1} x; smt.
+  + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
+    rewrite mem_map in iNm. rewrite /q !mem_set !mem_map !negb_or /=. 
+    have := logP pki pkj c _; 1: smt().
+    rewrite !mem_frng /rng => -[[x_i ks_i] [x_j ks_j]]. 
+    move: ks_i. rewrite mapE => /omap_some [ks_i [m_xi /= pksi]]. 
+    move: ks_j. rewrite mapE => /omap_some [ks_j [m_xj /= pksj]]. subst.
+    case: i_uv => ?; subst; rewrite iNm get_set_sameE /=. 
+    * apply: contraR nbad_k; rewrite !negb_or !negb_and !negbK => -[_ [Hi _]].
+      exists B.O.u{1} x_i; smt.
+    * apply: contraR nbad_k; rewrite !negb_or !negb_and !negbK => -[_ [_ Hi]].
+      exists B.O.v{1} x_j; smt.
+- (* sampling in B *)
+  auto => &1 &2 /=. 
+  rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [logP] [iNm] i_uv ks -> /=.
+  rewrite !get_set_sameE /=. 
+  case: (bad_k RO.m{2}.[x{2} <- ks]) => [bad_k | nbad_k] /=.
+    subst. case: bad_k => u v X. exists u v. 
+    rewrite !mem_set !mem_map. rewrite !mem_set in X. 
+    rewrite !get_setE !mapE /=. smt. 
+  do ! split; 1..6,9,10: smt.
+  + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
+    rewrite mem_map in iNm. rewrite /p !mem_map /=.
+    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set. smt.
+  + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
+    rewrite mem_map in iNm. rewrite /q !mem_map /=.
+    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set. smt.
+qed.
+
+local lemma pkey_bad' : 
+  hoare [B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey : bad_k' B.O.mpk ==> bad_k' B.O.mpk].
+proof.
+proc; do 2! (if; last by auto). 
+if; last by auto => &m /> i j *; exists i j; smt(mem_set get_setE).
+inline*; seq 6 : #pre; first by auto. 
+auto => &m /> i j *. exists i j; smt(mem_set get_setE).
+qed.
+
+local lemma get_bad : hoare [KS.get : bad_k KS.m ==> bad_k KS.m ].
+proof. 
+proc; seq 1 : #pre; first by auto. 
+if; last by auto. 
+auto => &m /> i j *; exists i j; smt(mem_set get_setE).
 qed.
 
 local lemma OidealB_Guv1 &m : 
@@ -1423,10 +1478,6 @@ have -> : Pr[O2.Game(O2.Oideal, B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] =
           Pr[O2.Game(O2ideal(K2.RO), B(A)).main() @ &m : res  /\ !bad_k' B.O.mpk ].
   by byequiv (O2ideal_lazy (B(A))); smt(). 
 byequiv => //; proc; inline *. 
-(* pose p (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) :=  *)
-(*   x.`1 = oget mpk.[u] /\ x.`2 = oget mpk.[v]. *)
-(* pose q (mpk : (int,pkey) fmap) u v (x : pkey*pkey*ciphertext) (_ : key) :=  *)
-(*   x.`1 <> oget mpk.[u] \/ x.`2 <> oget mpk.[v]. *)
 wp.
 call (:  bad_k KS.m, 
          ={u}(B.O,OG) /\ B.O.v{1} - 1 = OG.v{2}
@@ -1494,9 +1545,49 @@ call (:  bad_k KS.m,
     * case/mem_set: H11 => [/#|]. move => />.  
       case/find_some: H5 => ks_y [/= Hy1 Hy2] /=. 
       by rewrite mem_frng /rng; exists B.O.v{1}; rewrite mapE Hy1 /= Hy2.
-   + admit.
-- move => &2 bk. conseq />. proc. admit. (* LHS preserves bad with Pr = 1 *)
-- move => &1. conseq/>. proc. admit. (* RHS preserves bad *)
+   + seq 1 3 : (#pre /\ ={c,k}). 
+     * if{1}. 
+       - inline*. 
+         rcondf{1} 7; first by auto => /> /#. 
+         conseq />. auto => /> &1 &2 nbad 2? HK2 *. 
+         by have -> := HK2 i{2} _; smt().  
+       - swap{1} 2 -1. auto => /> &1 &2 nbad Hmsk 3? m_i *. 
+         rewrite Hmsk 1,2:/#. by rewrite m_i.
+     inline KS.restrK. sp.
+     if. 
+     * move => &1 &2; rewrite !andbA; do ! case => ? oj1 oj2 15? ioj *.
+       have {oj1 oj2} ? : oj{1} = oj{2}; subst; 1: by rewrite find_map.
+       case: (oj{2}) ioj => //= j. 
+       rewrite [i{2} = _]eq_sym; case (OG.u{2} = i{2}) => //= ?; smt().
+     * auto => &1 &2; rewrite !andbA; do ! case => ? oj1 oj2 Hbad 11? logP ? m_i ioj 2? ojN *.
+       have ? : oj{1} = oj{2}; 1: by subst; rewrite find_map.
+       subst i{2} pk{2} c{2} k{2} oj{2}.
+       have Hbad' : forall i j, i \in B.O.mpk{1} => j \in B.O.mpk{1} => 
+                                B.O.mpk{1}.[i] = B.O.mpk{1}.[j] => i = j.
+         rewrite bad_bad' in Hbad; smt().
+       rewrite /= ifF //. split => [//|_]. do ! split => //. 
+       - suff pF : forall k, !p B.O.mpk{1} B.O.u{1} B.O.v{1} (pkgen ks{2},pk{1},c{1}) k.
+           by subst O2ideal.m{1}; rewrite filter_set pF /= rem_filterE.
+         move=> k @/p /=. apply: contra ioj => /> u_m v_m E. 
+         split; first by apply Hbad'; smt(mem_map mapE).
+         subst oj{1}. by apply uniq_find_some => //= /#. 
+       - suff qT : forall k, q B.O.mpk{1} B.O.u{1} B.O.v{1} (pkgen ks{2},pk{1},c{1}) k.
+           subst B.O.m{1}; rewrite filter_set qT //=. by subst B.O.mpk{1}; rewrite mapE m_i.
+         move => k @/q /=; rewrite -!negb_and. apply: contra ioj => /> u_m v_m E1.
+         split; first by apply Hbad'; smt(mem_map mapE).
+         subst oj{1}. by apply uniq_find_some => //= /#.
+       - move => pki pkj c. case/mem_set => [|/=/>]; 1: exact logP. 
+         rewrite !mem_frng /rng; split; [exists i{1}|exists (oget oj{1})]. smt(mapE). 
+         by move: ojN; rewrite oj2 => /find_not_none => -[x ks_x [-> />]].
+     * by conseq/>.
+- move => &2 bk. conseq />. proc.
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  sp; if; last by auto. 
+  seq 1 : #post; [by call pkey_bad'| by conseq />]. 
+- move => &1; conseq />; proc; sp.  
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  sp; if; last by auto. 
+  seq 1 : #post; [by call get_bad| by conseq />]. 
 - proc; sp; if; 1,3: by auto => /> /#.
   (* (almost) same as encap *)
   seq 1 1 : (#[/2:]pre /\ pki{1} = pkgen ks{2} /\ KS.m.[i]{2} = Some ks{2} 
@@ -1538,8 +1629,12 @@ call (:  bad_k KS.m,
       have := HK2 i{2} Hi. smt(). 
     conseq />. (* really no more key sampling *)
     if{2}. 
-    (* log hit *)
-      admit.      
+    (* log hit (in Oideal) *)
+    rcondt{1} 14. 
+      move => &2. auto => &1 /> 3? HK2 ? m_i ? Hi *. 
+      have /= -> := HK2 _ Hi. smt(mem_filter).
+    auto => /> &1 &2 3? HK2 ? m_i ? Hi *. have /= -> := HK2 _ Hi. 
+    rewrite m_i /=. apply mem_filterE. smt. 
     (* honest decapsulation *)
     rcondf{1} 14. 
       move => &2. auto => &1 /> 3? HK2 ? m_i ? Hi *. 
@@ -1555,17 +1650,37 @@ call (:  bad_k KS.m,
     rewrite oget_map 1:/# m_v /= => coll_ks_v. 
     exists i{1} B.O.v{1}. smt().
   auto => /> &1 &2 ? Hmsk 3? m_i *. by rewrite Hmsk 1,2:/# m_i.
-- admit. (* LHS preserves bad *)
-- admit. (* RHS preserves bad *)
+- move => &2 bk. conseq />. proc.
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  sp; if; last by auto. 
+  seq 1 : #post; [by call pkey_bad'| by conseq />]. 
+- move => &1; conseq />; proc; sp.  
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  sp; if; last by auto. 
+  seq 1 : #post; [by call get_bad| by conseq />]. 
 - proc*. inline OG.pkey. 
   sp. if{2}. 
   + exlim i0{2} => i. wp. call (eqv_pki_ks i). auto. smt(). 
   + inline B(A, O2.C.Count(O2ideal(K2.RO))).O.pkey. sp. 
     rcondf{1} 1; first by auto => /> /#. 
     auto => />. move => &1 &2 2? Hout *. by rewrite mapE Hout.
-- admit. (* LHS preserves bad *)
-- admit. (* RHS preserves bad *)
-- admit. (* set up invariant *)
+- move => &2 bk. conseq />. 
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  by proc*; call pkey_bad'.
+- move => &1; conseq />; proc.
+  conseq (:_ ==> true : 1%r) (:_ ==> _); 1,2: smt(); 2: islossless.
+  sp; if; last by auto. 
+  seq 1 : #post; [by call get_bad| by conseq />]. 
+(* set up the invariant*)
+wp. 
+rnd (fun x : int*int => (x.`1,x.`2 - 1))
+    (fun x : int*int => (x.`1,x.`2 + 1)). 
+auto => &1 &2 [? ?]; split => [/#|_]. 
+split => [[u v]|_]; 1: smt(supp_dprod supp_dinter dprod1E dinter1E).
+move => [u v] /supp_dprod /= [/supp_dinter ? /supp_dinter ?].
+split => [|_]; 1: smt(supp_dprod supp_dinter).
+have -> /= : bad_k empty = false by smt(mem_empty).
+do ! split; 1..8: smt(map_empty emptyE filter_empty); smt.
 qed.
 
 local lemma G_shift &m u : 1 <= u < n =>
@@ -1600,18 +1715,23 @@ lemma lemma3 &m :
                 Pr[ O2.Game(O2.Oideal,B(A)).main() @ &m : res /\ !bad_k' B.O.mpk]|.
 proof.
 rewrite Oreal_Gnn Oideal_G10 OrealB_Guv OidealB_Guv1.
-have fin_prod : forall a b, is_finite (support ([1..n] `*` [a..b])). admit.
+have fin_prod : forall a b, is_finite (support ([1..n] `*` [a..b])).
+  by move => a b; apply/finite_dprod; apply/finite_dinter.
 have -> /= := M1.Mean_uni G &m (fun _ (gG:glob G) b => b /\ !bad_k gG.`4) (1%r/(n^2)%r) _ _.
-- admit.
+- case => u v. rewrite supp_dprod => /= -[u1n v1n]. rewrite dprod1E !supp_dinter1E //=.
+  by rewrite -fromintM expr2. 
 - exact fin_prod.
 have -> /= := M0.Mean_uni G &m (fun _ (gG:glob G) b => b /\ !bad_k gG.`4) (1%r/(n^2)%r) _ _.
-- admit.
+- case => u v. rewrite supp_dprod => /= -[u1n v1n]. rewrite dprod1E !supp_dinter1E //=.
+  by rewrite -fromintM expr2. 
 - exact fin_prod.
 pose s1 := to_seq _; pose s0 := to_seq _.
 have uniq_s1 : uniq s1 by apply/uniq_to_seq/fin_prod.
 have uniq_s0 : uniq s0 by apply/uniq_to_seq/fin_prod.
-rewrite (big_rem _ _ s1 (n,n)) {1}/predT /=. admit.
-rewrite (big_rem _ _ s0 (1,0)) {2}/predT /=. admit.
+rewrite (big_rem _ _ s1 (n,n)) {1}/predT /=. 
+  by rewrite /s1 mem_to_seq ?fin_prod supp_dprod /= supp_dinter; smt(n_gt0).
+rewrite (big_rem _ _ s0 (1,0)) {2}/predT /=.
+  by rewrite /s0 mem_to_seq ?fin_prod supp_dprod /= !supp_dinter; smt(n_gt0).
 rewrite -StdOrder.RealOrder.normrZ. smt.
 rewrite RField.mulrBr ![(n^2)%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1:smt.
 suff -> : big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res /\ !bad_k RO.m]) (rem (n, n) s1)
@@ -1636,6 +1756,8 @@ apply eq_big_seq => // -[u v].
 rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=.
 rewrite /f /=. case (v = n) => // -> {v} ?. apply: G_shift. smt().
 qed.
+
+
 
 (* combining everything to get the theorem *)
 module B11 (A : Adversary) : O2.Adversary = O2.B(B(A)).
