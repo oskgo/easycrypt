@@ -806,6 +806,23 @@ let process_rewrite1_r ttenv ?target ri tc =
   | RWTactic `Field ->
       process_algebra `Solve `Field [] tc
 
+  | RWEquiv (side, _pos, name, args, res) ->
+      let env, _, goal = FApi.tc1_eflat tc in
+      let goal = EcFol.destr_equivS goal in
+      let _, lem = EcEnv.Ax.lookup (unloc name) env in
+      assert (List.is_empty lem.ax_tparams);
+      let mem = match side with `Left -> goal.es_ml | `Right -> goal.es_mr in
+      let subenv = EcEnv.Memory.push_active mem env in
+      let equiv = EcFol.destr_equivF lem.ax_spec in
+      let proc = EcEnv.Fun.by_xpath equiv.ef_fl env in
+      let _args =
+        let ue = EcUnify.UniEnv.create (Some []) in
+        EcTyping.transexpcast subenv `InProc ue proc.f_sig.fs_arg args in
+      let _res =
+        let ue = EcUnify.UniEnv.create (Some []) in
+        EcTyping.transexpcast subenv `InProc ue proc.f_sig.fs_ret res in
+      t_id tc
+
 (* -------------------------------------------------------------------- *)
 let process_rewrite1 ttenv ?target ri tc =
   EcCoreGoal.reloc (loc ri) (process_rewrite1_r ttenv ?target ri) tc

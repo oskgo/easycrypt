@@ -747,6 +747,7 @@ and rwarg1 =
   | RWSmt    of (bool * pprover_infos)
   | RWApp    of ppterm
   | RWTactic of rwtactic
+  | RWEquiv  of (side * codepos1 * pqsymbol * pexpr * pexpr)
 
 and rwoptions = rwside * trepeat option * rwocc * pformula option
 and rwside    = [`LtoR | `RtoL]

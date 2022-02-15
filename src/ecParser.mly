@@ -2409,6 +2409,12 @@ rwarg1:
         parse_error (loc x) (Some msg)
   }
 
+| EQUIV aout=bracket(
+    s=side pos=codepos1 x=lqident args=sexpr res=sexpr {
+      RWEquiv (s, pos, x, args, res)
+    }
+  ) { aout }
+
 rwpterms:
 | f=pterm
     { [(`LtoR, f)] }
