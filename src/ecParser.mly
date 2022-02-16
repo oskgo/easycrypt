@@ -1961,10 +1961,10 @@ axiom_tc:
 
 axiom:
 | l=locality AXIOM ids=bracket(ident+)? o=nosmt d=lemma_decl
-    { mk_axiom ~locality:l ~nosmt:o d (PAxiom (odfl [] ids)) }
+    { mk_axiom ~locality:l ~nosmt:true d (PAxiom (odfl [] ids)) }
 
 | l=locality LEMMA o=nosmt d=lemma_decl ao=axiom_tc
-    { mk_axiom ~locality:l ~nosmt:o d ao }
+    { mk_axiom ~locality:l ~nosmt:true d ao }
 
 | l=locality  EQUIV x=ident pd=pgtybindings? COLON p=loc( equiv_body(none)) ao=axiom_tc
 | l=locality  HOARE x=ident pd=pgtybindings? COLON p=loc( hoare_body(none)) ao=axiom_tc
