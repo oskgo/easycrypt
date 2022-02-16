@@ -317,7 +317,7 @@ lemma odd2 : !odd 2. proof. by rewrite /odd iter2. qed.
 
 lemma oddN z : odd (-z) = odd z by [].
 lemma odd_abs z : odd `|z| = odd z by [].
-lemma oddS z : odd (z + 1) = !(odd z) by [].
+lemma oddS z : odd (z + 1) = !(odd z) by smt(iterS).
 
 lemma odd3 : odd 3.
 proof. by rewrite (oddS 2) odd2. qed.
