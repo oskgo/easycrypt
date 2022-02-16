@@ -104,11 +104,11 @@ qed.
 
 lemma mem_filter (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
    x \in filter p m <=> x \in m /\ p x (oget m.[x]).
-proof. smt. qed.  
+proof. smt(filterE). qed.
 
 lemma mem_filterE (m : ('a,'b) fmap) (p : 'a -> 'b -> bool) x : 
   x \in filter p m => (filter p m).[x] = m.[x].
-proof. smt. qed.
+proof. smt(filterE). qed.
 
 lemma filter_empty (p:'a -> 'b -> bool) : filter p empty = empty.
 proof. by apply/fmap_eqP => x; rewrite filterE emptyE. qed.
@@ -523,7 +523,7 @@ call (: qc < OG.ctr,
 - move=> *; proc; inline*. auto => />; smt(dencseed_ll).
 (* decap *)
 - proc; inline*; auto => /> &2 H1 H2 H3 H4.
-  move: (x{2}) H4 => [u pk c] /=. smt.
+  by move: (x{2}) H4 => [u pk c] /= /#. 
 - move =>*; islossless.
 - move=> *; proc; inline*. auto => />.
 (* chall *)
@@ -689,9 +689,7 @@ rewrite (eq_big_perm _ _ _ _ (perm_eq_dinter 1 qc)).
 rewrite (eq_big_perm _ _ _ _ (perm_eq_dinter_pred 0 qc)).
 rewrite [range 0 _]range_ltn 1:#smt big_cons {2}/predT /=. 
 rewrite rangeSr 1:#smt big_rcons {1}/predT /=.
-rewrite -StdOrder.RealOrder.normrZ. smt.
-rewrite RField.mulrBr ![qc%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1:smt.
-by have -> : forall (a b c : real), a + b - (c + a) = b - c by smt().
+rewrite -StdOrder.RealOrder.normrZ; smt(qc_gt0).
 qed.
 
 end section PROOF.
@@ -1036,7 +1034,9 @@ op bad_k' (m : (int,pkey) fmap) =
   exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
 
 local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
-proof. smt. qed.
+proof. 
+by rewrite /bad_k /bad_k' /fcoll; smt(mem_map mapE oget_omap_some).
+qed.
 
 (* Need two clones, since the distribution is an operator of the theory *)
 local clone Means as M1 with
@@ -1487,19 +1487,18 @@ if{1}.
   rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [logP] [iNm] i_uv ks -> /=.
   rewrite get_set_sameE /=. 
   case: (bad_k RO.m{2}.[x{2} <- ks]) => [bad_k | nbad_k] /=.
-    subst. case: bad_k => u v X. exists u v. 
-    rewrite !mem_set !mem_map. rewrite !mem_set in X. 
-    rewrite !get_setE !mapE /=. smt. 
-  do ! split; 1..7,10..12: smt. 
+    move/bad_bad' : bad_k; smt(map_set).
+  do ! split; 1..7,11..12: smt(map_set get_setE oget_omap_some); last first. 
+    smt(frng_set fmap_eqP remE in_fsetU1).
   + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
     rewrite mem_map in iNm. rewrite /p !mem_map /=.
     case: i_uv => ?; subst; rewrite iNm /=. 
     * apply: contra nbad_k. rewrite get_set_sameE /= => -[_] [_] [Hi] _.
       have [/mem_frng @/rng [x]] := logP pki pkj c _;1: smt(). 
-      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]] _. exists B.O.u{1} x; smt.
+      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]] _. exists B.O.u{1} x; smt(mem_set get_setE).
     * apply: contra nbad_k. rewrite get_set_sameE /= => -[_] [_] [_] Hi.
       have [_ /mem_frng @/rng [x]] := logP pki pkj c _;1: smt(). 
-      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]]. exists B.O.v{1} x; smt.
+      rewrite mapE /= => /omap_some [ks' [x_ks' ks'_pki]]. exists B.O.v{1} x; smt(mem_set get_setE). 
   + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
     rewrite mem_map in iNm. rewrite /q !mem_set !mem_map !negb_or /=. 
     have := logP pki pkj c _; 1: smt().
@@ -1508,24 +1507,25 @@ if{1}.
     move: ks_j. rewrite mapE => /omap_some [ks_j [m_xj /= pksj]]. subst.
     case: i_uv => ?; subst; rewrite iNm get_set_sameE /=. 
     * apply: contraR nbad_k; rewrite !negb_or !negb_and !negbK => -[_ [Hi _]].
-      exists B.O.u{1} x_i; smt.
+      exists B.O.u{1} x_i; smt(mem_set get_setE). 
     * apply: contraR nbad_k; rewrite !negb_or !negb_and !negbK => -[_ [_ Hi]].
-      exists B.O.v{1} x_j; smt.
+      exists B.O.v{1} x_j; smt(mem_set get_setE). 
 - (* sampling in B *)
   auto => &1 &2 /=. 
-  rewrite -!andbA => -[?] [?] [?] [?] [?] [?] [?] [HK2] [?] [?] [?] [logP] [iNm] i_uv ks -> /=.
+  rewrite !andbA; do ! case => 8? HK2 2? logP iNm i_uv ks -> /=.
   rewrite !get_set_sameE /=. 
   case: (bad_k RO.m{2}.[x{2} <- ks]) => [bad_k | nbad_k] /=.
     subst. case: bad_k => u v X. exists u v. 
     rewrite !mem_set !mem_map. rewrite !mem_set in X. 
-    rewrite !get_setE !mapE /=. smt. 
-  do ! split; 1..6,9,10: smt.
+    rewrite !get_setE !mapE /=; smt(get_setE).
+  do ! split; 1..6,10: smt(map_set get_setE oget_omap_some); last first.
+    smt(frng_set fmap_eqP remE in_fsetU1).
   + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
     rewrite mem_map in iNm. rewrite /p !mem_map /=.
-    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set. smt.
+    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set; smt(mem_map).
   + subst. apply eq_in_filter => -[pki pkj c k] Hk. 
     rewrite mem_map in iNm. rewrite /q !mem_map /=.
-    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set. smt.
+    rewrite !get_setE !ifF 1,2:/#. rewrite !mem_set; smt(mem_map).
 qed.
 
 (* sampling new keys perserves key collisions - B.pkey *)
@@ -1711,7 +1711,7 @@ call (:  bad_k KS.m,
       move => &2. auto => &1 /> 3? HK2 ? m_i ? Hi *. 
       have /= -> := HK2 _ Hi. smt(mem_filter).
     auto => /> &1 &2 3? HK2 ? m_i ? Hi *. have /= -> := HK2 _ Hi. 
-    rewrite m_i /=. apply mem_filterE. smt. 
+    by rewrite m_i /=; apply mem_filterE; smt(mem_filter).
     (* honest decapsulation *)
     rcondf{1} 14. 
       move => &2. auto => &1 /> 3? HK2 ? m_i ? Hi *. 
@@ -1757,7 +1757,7 @@ split => [[u v]|_]; 1: smt(supp_dprod supp_dinter dprod1E dinter1E).
 move => [u v] /supp_dprod /= [/supp_dinter ? /supp_dinter ?].
 split => [|_]; 1: smt(supp_dprod supp_dinter).
 have -> /= : bad_k empty = false by smt(mem_empty).
-do ! split; 1..8: smt(map_empty emptyE filter_empty); smt.
+do ! split; smt(map_empty emptyE filter_empty bad_bad'). 
 qed.
 
 (* Claim 5 *)
@@ -1776,7 +1776,7 @@ call(: ={RO.m,Oideal.m}
     by auto => />; smt(fdom_set in_fsetU1).
   sp; if; 2,3: (by auto => />); move => /> &2.
   case (findP (fun (_ : int) (ks : keyseed) => pk{2} = pkgen ks) RO.m{2}) => [-> //|]. 
-  move => j ks_j -> /= m_j pk_j /(_ j _); smt. 
+  move => j ks_j -> /= m_j pk_j /(_ j _); smt(mem_fdom).
 - proc; inline*; sp; if; [smt()| |by auto].
   seq 5 5 : (#[/3:]pre /\ ={ks,pki}). 
     by auto => />; smt(fdom_set in_fsetU1).
@@ -1811,8 +1811,8 @@ rewrite (big_rem _ _ s1 (n,n)) {1}/predT /=.
   by rewrite /s1 mem_to_seq ?fin_prod supp_dprod /= supp_dinter; smt(n_gt0).
 rewrite (big_rem _ _ s0 (1,0)) {2}/predT /=.
   by rewrite /s0 mem_to_seq ?fin_prod supp_dprod /= !supp_dinter; smt(n_gt0).
-rewrite -StdOrder.RealOrder.normrZ. smt.
-rewrite RField.mulrBr ![(n^2)%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1:smt.
+rewrite -StdOrder.RealOrder.normrZ; 1: smt(StdOrder.IntOrder.ge0_sqr).
+rewrite RField.mulrBr ![(n^2)%r * _]RField.mulrC -!RField.mulrA RField.mulVf /=; 1: smt(n_gt0 expf_eq0).
 suff -> : big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res /\ !bad_k RO.m]) (rem (n, n) s1)
         = big predT (fun (v : int * int) => Pr[G.work(v) @ &m : res /\ !bad_k RO.m]) (rem (1, 0) s0).
 by have -> : forall (a b c : real), b + a - (c + a) = b - c by smt().
@@ -1835,8 +1835,6 @@ apply eq_big_seq => // -[u v].
 rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=.
 rewrite /f /=. case (v = n) => // -> {v} ?. apply: G_shift. smt().
 qed.
-
-
 
 (* combining everything to get the theorem *)
 module B11 (A : Adversary) : O2.Adversary = O2.B(B(A)).
