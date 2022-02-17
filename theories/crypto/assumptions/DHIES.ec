@@ -686,9 +686,9 @@ wp; call (_: inv (glob MRPKE_lor){1} (glob MRPKE_lor){2} (glob ODH_Orcl){2} Adv1
       rewrite (L1 (fun k v => (g^ephL, hash(k^ephL))) pks{2} keys00) //.
        by apply/(supp_dlist_size _ _ _ _ H11)/size_ge0.
       move=> /= ? ?; move: H17; rewrite mem_cat mem_join; move=> [?|?]; first left; smt().
-      right; rewrite mem_ofassoc -!map_comp /(\o) /=; apply/mapP; exists pk; split; first smt.
+      right; rewrite mem_ofassoc -!map_comp /(\o) /=; apply/mapP; exists pk; split; first smt(pkmem_foldenc).
       have T: pk \in map fst (map (fun x => (x, (g^ephL, hash(x^ephL)))) (elems pks{2})).
-       rewrite -map_comp /(\o) map_id; smt.
+       rewrite -map_comp /(\o) map_id; smt(pkmem_foldenc).
       rewrite (ephmem_foldenc _ _ _ _ _ _ _ _ T H16 H17) /=.
       have ? : 0 <= index pk (elems pks{2}) < size (elems pks{2}).
       + smt(index_ge0 index_mem map_comp mapP).
@@ -868,10 +868,10 @@ wp; call (_: inv (glob MRPKErnd_lor){1} (glob MRPKE_lor){2} (glob ODH_Orcl){2} A
     move=> /pkmem_foldenc; smt (memE mem_fdom).
   + move: H10; rewrite mem_cat mem_join; move=> [?|?]; first smt().
     right; rewrite mem_ofassoc -!map_comp /(\o) /=.
-    have T: pk \in map fst hs{2} by smt.
+    have T: pk \in map fst hs{2} by smt(pkmem_foldenc).
     rewrite (ephmem_foldenc _ _ _ _ _ _ _ _ T H9 H10) /=. 
     have ?: (pk \in map fst hs{2})%List by smt.
-    have ?: uniq (map fst hs{2}) by smt.
+    have ?: uniq (map fst hs{2}) by smt(uniq_elems).
     apply/mapP => /=.
     exists (pk,oget (assoc hs{2} pk)) => //=.
     by apply assoc_get_mem.

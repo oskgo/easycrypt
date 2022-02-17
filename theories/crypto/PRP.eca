@@ -301,8 +301,8 @@ qed.
 lemma collision_stable (m:(D,D) fmap) y y':
   collision m =>
   y \notin m =>
-  collision m.[y <- y']
-by [].
+  collision m.[y <- y'].
+proof. by move=> + /collision_add -> - ->. qed.
 
 (** To factor out the difficult step, we parameterize the PRP by a
     procedure that samples its output, and provide two instantiations
@@ -471,8 +471,8 @@ section Upto.
       smt (rngE get_setE).
     sp; if{1}.
     + conseq (_: _ ==> collision PRFi.m{2} /\ PRP_indirect_bad.bad{1})=> //.
-      auto=> /> &1 &2 x_notin_m coll_def rng_m_r; smt.
-    by auto; smt. (** FIXME: Investigate **)
+      auto=> /> &1 &2 x_notin_m coll_def rng_m_r; smt(excepted_lossless).
+    by auto; smt().
     move=> &2 bad; conseq (_: true ==> true: =1%r) (_: PRP_indirect_bad.bad ==> PRP_indirect_bad.bad)=> //=.
     + by proc; if=> //=; inline *; seq  2: PRP_indirect_bad.bad; [auto|if=> //=; auto].
     proc; if=> //=; inline *.
@@ -483,7 +483,7 @@ section Upto.
     by proc; if; auto=> />; rewrite dD_ll //=; smt(domE get_setE).
   inline *; auto=> />; split=> [|_].
   + by rewrite no_collision=> x x'; rewrite mem_empty.
-  move=> /> rL rR DL b mL DR mR [-> //| /#].
+  by move=> /> rL rR DL b mL DR mR [-> //| /#].
   qed.
 end section Upto.
 
@@ -604,7 +604,9 @@ section CollisionProbability.
     if => //=.
     auto => /> &1 &2 h1 h2 h3 h4 r _.
     rewrite fdom_set fcardUI_indep 2:fcard1; 1: by rewrite fsetI1 mem_fdom h4. 
-    smt (get_setE mem_frng rngE collision_add).
+    split; 1:smt(size_ge0 fcard_ge0).
+    split; 1:smt(mem_frng rngE get_setE).
+    smt(get_setE mem_frng rngE collision_add).
   auto; smt (size_eq0 fdom0 fcards0 frng0 in_fset0 mem_empty).
   qed.
 

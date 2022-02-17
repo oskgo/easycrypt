@@ -52,10 +52,10 @@ lemma islossless_leaks : islossless DDHb.leaks.
 proof. proc;auto. qed.
 
 lemma islossless_orcl1 : islossless DDHb.orclL.
-proof. proc;auto;progress;smt. qed.
+proof. proc; auto=> />; smt(Dgf_q.lossless). qed.
 
 lemma islossless_orcl2 : islossless DDHb.orclR.
-proof. proc;auto;progress;smt. qed.
+proof. proc; auto=> />; smt(Dgf_q.lossless). qed.
 
 section.
 
