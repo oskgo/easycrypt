@@ -32,7 +32,7 @@ clone SKE_INDR as CoreDefs with
   type leaks <- leaks_p,
   op   leak  <- leak_p,
   op   dC    <- dC_p
-proof * by smt.
+proof * by smt(dC_p_ll).
 
 clone import SKE_INDR as PtE with
   type eK    <- key,
@@ -41,7 +41,7 @@ clone import SKE_INDR as PtE with
   type leaks <- leaks_m,
   op   leak  <- leak_m,
   op   dC    <- dC_m
-proof * by smt.
+proof * by smt(dC_m_ll).
 import RCPA.
 
 module PadThenEncrypt (S:CoreDefs.Enc_Scheme): Enc_Scheme = {
@@ -85,7 +85,7 @@ section RCPA.
   proof.
     byequiv=> //=; proc.
     call (_: true).
-      by proc; inline *; auto; smt.
+      by proc; inline *; auto=> />; smt(leak_pad).
     by call (_: true).
   qed.
 
@@ -99,7 +99,7 @@ section RCPA.
     byequiv=> //=; proc; inline *.
     call (_:    ={glob S}
              /\ ={k}(RCPA_Wrap,CoreDefs.RCPA.RCPA_Wrap)).
-      by proc; inline *; wp; call (_: true); auto; smt.
+      by proc; inline *; wp; call (_: true); auto; smt().
     by call (_: true).
   qed.
 end section RCPA.

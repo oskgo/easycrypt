@@ -23,7 +23,7 @@ theory MtE.
     type leaks                <- leaks,
     op   leak (pt:ptxt * tag) <- leak pt.`1,
     op   dC                   <- dC
-  proof * by smt.
+  proof * by smt(dC_ll).
 
   clone MACs as MACa with
     type mK   <- mK,
@@ -38,7 +38,7 @@ theory MtE.
     type leaks <- leaks,
     op   leak  <- leak,
     op   dC    <- dC
-  proof * by smt.
+  proof * by smt(dC_ll).
 
   (** The black-box construction is as follows **)
   module MacThenEncrypt(E:SKEa.Enc_Scheme, M:MACa.MAC_Scheme): Enc_Scheme = {
@@ -256,7 +256,7 @@ theory MtE.
           proc; inline *.
           wp=> /=; call (_: true).
           wp=> /=; call (_: true).
-          by auto; smt.
+          auto=> />; smt(in_fsetU in_fset1).
           (* lossless after win *)
           by move=> &2 win; proc; wp; call (MtE_enc_ll E M E_enc_ll M_tag_ll).
           (* lossless and preservation of win *)
@@ -281,7 +281,7 @@ theory MtE.
           if=> //=.
             auto; call (_: true); auto=> /> &1 &2 _ /> eq_qs _ /> _.
             by case: (pt{2})=> //= -[p t] r; case: r=> //= _; rewrite eq_qs.
-          by auto; smt.
+          by auto=> /> _ _; exact:M_verify_ll.
         (* lossless after win *)
         by move=> &2 bad; proc; wp; call (MtE_dec_ll E M E_dec_ll M_verify_ll).
         (* lossless and preservation of win *)
@@ -289,13 +289,13 @@ theory MtE.
           by inline *; wp; call (_: true); auto.
           by inline *; wp; call E_dec_ll; auto.
           if=> /=.
-            by inline *; auto; call M_verify_ll; auto; smt.
+            by inline *; auto; call M_verify_ll; auto=> />.
           done.
         (* back to the experiment *)
         swap{2} 4 -3.
         wp; call (_: true).
         wp; call (_: true).
-        by auto; smt.
+        by auto=> /#.
       qed.
     end section PTXT.
   end RCPA_WUF_PTXT.
@@ -321,7 +321,7 @@ theory EtM.
     type leaks <- leaks,
     op   leak  <- leak,
     op   dC    <- dC
-  proof * by smt.
+  proof * by smt(dC_ll).
 
   clone MACs as MACa with
     type mK   <- mK,
@@ -336,7 +336,7 @@ theory EtM.
     type leaks           <- leaks,
     op   leak            <- leak,
     op   dC    (l:leaks) <- (dC l) `*` (MUnit.dunit witness<:tag>)
-  proof * by smt.
+  proof * by smt(dprod_ll dC_ll dunit_ll).
 
   (** The black-box construction is as follows **)
   module EtM(E:SKEa.Enc_Scheme, M:MACa.MAC_Scheme): Enc_Scheme = {
@@ -571,7 +571,7 @@ theory EtM.
           wp; sp. exists* ek{1}, p0{1}; elim* => _k _p.
           call (_: ={glob E, k, p} /\ k{1} = _k /\ p{1} = _p ==> ={glob E, res} /\ dec _k res{1} = Some _p).
             by conseq (_: ={glob E, k, p} ==> ={glob E, res}) (enc_sem _k _p); proc true.
-          by skip; smt.
+          by auto=> />; smt(in_fsetU in_fset1).
           (* lossless after win *)
           by move=> &2 win; proc; wp; call (EtM_enc_ll E M E_enc_ll M_tag_ll).
           (* lossless and preservation of win *)
@@ -606,18 +606,18 @@ theory EtM.
             call{1} (_:     (glob E) = ge /\ k = _k /\ c = _c
                         ==> (glob E) = ge /\ res = dec _k _c).
               by conseq (E_dec_ll) (dec_sem ge _k _c).
-            by skip; smt.
-          by auto; smt.
+            by auto=> /#.
+          by auto=> /#.
         (* lossless after win *)
         by move=> &2 bad; proc; wp; call (EtM_dec_ll E M E_dec_ll M_verify_ll).
         (* lossless and preservation of win *)
         move=> &1; proc; seq  2: true 1%r 1%r 0%r _ (MACa.SUF_CMA.SUF_Wrap.win) => //=.
-          by inline *; wp; call (_: true); auto; smt.
+          by inline *; wp; call (_: true); auto=> /#.
           by inline *; wp; call M_verify_ll; auto.
         (* back to the experiment *)
         swap{2} 4 -3.
         wp; call (_: true).
-        by wp; call (_: true); skip; smt.
+        by wp; call (_: true); skip=> />; smt(in_fset0).
       qed.
     end section CTXT.
   end RCPA_SUF_CTXT.

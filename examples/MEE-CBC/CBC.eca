@@ -39,7 +39,7 @@ clone Ring.ZModule as Block with
   op   zeror           <- zeros,
   op   (+)             <- (+),
   op   [-] (x : block) <- x
-proof * by smt.
+proof * by smt(add0b addbA addbC addbK).
 
 (* -------------------------------------------------------------------- *)
 (** Let P, Pi: key -> block -> block be a PRP and its inverse **)
