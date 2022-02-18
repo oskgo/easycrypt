@@ -457,7 +457,7 @@ local module G : M1.Worker = {
   }
 }.
 
-declare axiom A_bound (O <: Oracle) :
+declare axiom A_bound (O <: Oracle{A,Count}) :
   hoare [ A(Count(O)).guess : 
   counts0 Count.ce Count.cd Count.cc ==> 
   counts qe qd qc Count.ce Count.cd Count.cc].
@@ -611,10 +611,9 @@ call (: ={glob Oreal} /\ ={m}(B.OB,Oideal) /\ ={ctr}(B.OB,OG) /\
   auto => />; smt(supp_dinter dinter1E).
 qed.
 
-
-
-local module H(O:Oracle) = {
-  proc main() = {
+(* Variant of B which counts its own queries *)
+local module Bc(O:Oracle) = {
+  proc guess() = {
     var r;
     B.OB.q <$ [1..qc];                   
     B.OB.ctr <- 0;                       
@@ -624,8 +623,8 @@ local module H(O:Oracle) = {
   }
 }.
 
-local equiv foo (O<:Oracle{A,B,CB.Count,Count}) : 
-    B(A,CB.Count(O)).guess ~ H(O).main : 
+local equiv B_Bc (O<:Oracle{A,B,CB.Count,Count}) : 
+    B(A,CB.Count(O)).guess ~ Bc(O).guess : 
     ={glob A, glob B, glob O, glob CB.Count} ==> ={glob A, glob B, glob CB.Count}.
 proof.
 proc; call (: ={glob B, glob CB.Count, glob O}); last by inline *; auto.
@@ -644,16 +643,14 @@ lemma B_bound:
             counts (qe+qc) qd 1 CB.Count.ce CB.Count.cd CB.Count.cc].
 proof.
 move => O.
-conseq (foo(O)) 
+conseq (B_Bc(O)) 
 (: counts0 CB.Count.ce CB.Count.cd CB.Count.cc ==> 
    counts (qe+qc) qd 1 CB.Count.ce CB.Count.cd CB.Count.cc); 1,2: smt().
 proc.
 conseq 
   (: _ ==> counts qe qd qc Count.ce Count.cd Count.cc) 
   (: _ ==> counts qe qd qc Count.ce Count.cd Count.cc => 
-             counts (qe + qc) qd 1 CB.Count.ce CB.Count.cd CB.Count.cc).
-- smt(). 
-- smt(). 
+             counts (qe + qc) qd 1 CB.Count.ce CB.Count.cd CB.Count.cc); 1,2: smt().
 - call (: CB.Count.cc = b2i (B.OB.q <= B.OB.ctr) /\
           CB.Count.ce <= Count.ce + Count.cc /\
           CB.Count.cd <= Count.cd).
@@ -993,6 +990,23 @@ module (B (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = {
   }
 }.
 
+op bad_k' (m : (int,pkey) fmap) = 
+  exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
+
+module (Bbad (A : Adversary) : O2.Adversary) (O2 : O2.Oracle) = { 
+  proc guess() = {
+    var r; 
+
+    (* We don't actually do any counting, but calling Count(..).init()
+    here makes it part of glob Bbad, allowing us to to later slip in a
+    counting wrapper *)
+    Count(B(A,O2).O).init();
+
+    r <@ B(A,O2).guess();
+    return r /\ !bad_k' B.O.mpk;
+  }
+}.
+
 section PROOF.
 
 declare module A <: Adversary{Oreal,Oideal,Count,B,
@@ -1003,6 +1017,13 @@ declare axiom A_ll : forall (O <: Oracle{A}),
   islossless O.decap => 
   islossless O.pkey =>
   islossless A(O).guess.
+
+(* A makes at most qe encap queres, qd decap queries, and 0 challenge
+queres (there is no challenge oracle) *)
+declare axiom A_bound (O <: Oracle) :
+  hoare [ A(Count(O)).guess : 
+    O2.counts0 Count.ce Count.cd 0 ==> 
+    O2.counts qe qd 0 Count.ce Count.cd 0].
 
 (* We define an indexed collection of games G_{u,v} where 1<=u<=n
 and 0<=v<= n. We will then prove 4 main lemmas:
@@ -1029,9 +1050,6 @@ no collisions among the public keys. However, only the proof of Claim
 key (i.e. sharing keyseeds leading to the same public key *)
 op bad_k (m : (int, keyseed) fmap) = fcoll pkgen m.
 
-(* For the adversary B, this corresponds to a collision in [mpk] *)
-op bad_k' (m : (int,pkey) fmap) = 
-  exists i j, i <> j /\ i \in m /\ j \in m /\ m.[i] = m.[j].
 
 local lemma bad_bad' m : bad_k m <=> bad_k' (map (fun _ ks => pkgen ks) m).
 proof. 
@@ -1836,30 +1854,109 @@ rewrite uniq_mem_rem // mem_to_seq ?fin_prod supp_dprod !supp_dinter /=.
 rewrite /f /=. case (v = n) => // -> {v} ?. apply: G_shift. smt().
 qed.
 
-(* combining everything to get the theorem *)
-module B11 (A : Adversary) : O2.Adversary = O2.B(B(A)).
+local lemma B_Bbad_real &m : 
+  Pr[ O2.Game(O2.Oreal ,B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] = 
+  Pr[ O2.Game(O2.Oreal ,Bbad(A)).main() @ &m : res].
+proof. by byequiv => //; proc; inline*; wp; sim. qed.
+
+local lemma B_Bbad_ideal &m : 
+  Pr[ O2.Game(O2.Oideal ,B(A)).main() @ &m : res /\ !bad_k' B.O.mpk] = 
+  Pr[ O2.Game(O2.Oideal ,Bbad(A)).main() @ &m : res].
+proof. by byequiv => //; proc; inline*; wp; sim. qed.
+
+(* Variant of Bbad that counts calls to the oracle it provices to A *)
+local module Bc (O : O2.Oracle) = { 
+  proc guess() = { 
+    var r:bool <- witness;
+    (B.O.u,B.O.v) <$ [1..n] `*` [1..n];
+    B.O.m <- empty;
+    B.O.mpk <- empty;
+    B.O.msk <- empty;
+    B.O.f <- fun x => if x = B.O.u then u1 else u2;
+    Count(B(A,O).O).init();
+    r <@ A(Count(B(A,O).O)).guess();
+    return r;
+  }
+}.
+
+local equiv B_Bc (O<: O2.Oracle{A,B,Count}) : 
+    Bbad(A,O).guess ~ Bc(O).guess : 
+    ={glob A, glob B, glob O} ==> ={glob A, glob B, glob O}.
+proof. 
+proc; inline B(A,O).guess ; wp. call(: ={glob B, glob O}). 
+- proc; inline*; wp. 
+  by sim / true : (={c,k,glob B,glob O}); auto => />. 
+- proc; inline*; sim; auto.
+- by sim.
+by inline*; auto.
+qed.
+
+local lemma Bbad_bound (O <: O2.Oracle{Count,O2.C.Count,A,B}) :
+  hoare[ Bbad(A, O2.C.Count(O)).guess :
+          (O2.counts0 O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc) ==>
+          (O2.counts qe qd qe O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc)].
+proof.
+(* Insert counting of calls to Bbad *)
+conseq (B_Bc(O2.C.Count(O))) 
+ (: O2.counts0 O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc ==>
+    O2.counts qe qd qe O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc); 1,2: smt(). 
+(* Obtain the call bounds for A *)
+conseq (: true ==> O2.counts qe qd 0 Count.ce Count.cd 0)  
+       (: O2.counts0 O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc ==>
+          O2.counts qe qd 0 Count.ce Count.cd 0 => 
+          O2.counts qe qd qe O2.C.Count.ce O2.C.Count.cd O2.C.Count.cc); 1: smt(); 
+  last by proc; call (A_bound (<: B(A, O2.C.Count(O)).O)); inline*; auto.
+proc. 
+call (: O2.C.Count.ce <= Count.ce /\ O2.C.Count.cd <= Count.cd /\ O2.C.Count.cc <= Count.ce).
+- proc; swap 1 1; wp. inline*; sp. 
+  if; last by auto => /> /#. 
+  seq 4 : #pre; 1: by conseq />.
+  seq 1 : #post; 2: by conseq />. 
+  do 2! (if; 1: by wp; call(:true); auto => /> /#).
+  by auto => /> /#. 
+- proc; swap 1 1; wp. inline*; sp. 
+  if; last by auto => /> /#. 
+  seq 3 : #pre; 1: by conseq />.
+  wp. if; 1: by auto => /> /#. 
+  if; 2: by auto => /> /#. 
+  wp; call(:true); auto => /> /#. 
+- by conseq />.
+by inline*; auto => /> /#. 
+qed.
+
+local lemma Bbad_ll (O <: O2.Oracle{Bbad(A)}) : 
+  islossless O.pkey =>
+  islossless O.encap => islossless O.decap => islossless O.chall => islossless Bbad(A, O).guess.
+proof.
+move => *. 
+islossless; first by apply (A_ll (<: B(A,O).O)); islossless. 
+smt(weight_dprod weight_dinter n_gt0).
+qed.
+
+(* combining everything to get the theorem for Outsider-CCA *)
+module B11 (A : Adversary) : O2.Adversary = O2.B(Bbad(A)).
 
 (* The advantage of A is [n^2 * qc] times the advantage of B11 ...  *)
 lemma theorem11 &m : 
-  `| Pr[ Game(Oreal ,A).main() @ &m : res ] - 
-     Pr[ Game(Oideal,A).main() @ &m : res ] | 
+  `| Pr[ Game(Oreal ,A).main() @ &m : res /\ !bad_k KS.m] - 
+     Pr[ Game(Oideal,A).main() @ &m : res /\ !bad_k KS.m] | 
 = (n^2 * qe)%r * `| Pr[ O2.Game(O2.Oreal ,B11(A)).main() @ &m : res] - 
                     Pr[ O2.Game(O2.Oideal,B11(A)).main() @ &m : res]|.
 proof. 
-have l2 := O2.lemma2 (B(A)) _ _ &m.
-- admit. (* B(A) is lossless *)
-- admit. (* B(A) stays within the query bound *)
-- admit. (* fixme: take care of bad event / by rewrite lemma3 l2 /#. *)
+have l2 := O2.lemma2 (Bbad(A)) Bbad_ll Bbad_bound &m.
+by rewrite lemma3 B_Bbad_real B_Bbad_ideal l2 /#.
 qed.
 
 (* ... and B11 makes at most 2*qe queries to encap, at most qd queries
 to decap, and at most one challenge querey. *)
 lemma B11_bound : 
-  forall (O <: O2.Oracle{A,B,O2.CB.Count,Count}),
+  forall (O <: O2.Oracle{A,O2.CB.Count,O2.C.Count,Count,O2.B(Bbad(A)).OB}),
     hoare[ B11(A,O2.CB.Count(O)).guess :
             O2.counts0 O2.CB.Count.ce O2.CB.Count.cd O2.CB.Count.cc ==>
             O2.counts (2*qe) qd 1 O2.CB.Count.ce O2.CB.Count.cd O2.CB.Count.cc].
-admitted.
+proof.
+by move => O; conseq (O2.B_bound (Bbad(A)) Bbad_ll Bbad_bound O) => /#.
+qed.
 
 end section PROOF.  
 
