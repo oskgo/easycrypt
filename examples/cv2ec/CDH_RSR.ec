@@ -6,18 +6,7 @@ import DBool.Biased.
 import StdOrder.RealOrder.
 import RField.
 
-(* rangeset - move into Fset.ec *)
-
-lemma uniq_card_oflist (s : 'a list) : uniq s => card (oflist s) = size s.
-proof. by rewrite /card => /oflist_uniq/perm_eq_size => <-. qed.
-
-op rangeset (m n : int) = oflist (range m n).
-
-lemma card_rangeset m n : card (rangeset m n) = max 0 (n - m).
-proof. by rewrite uniq_card_oflist ?range_uniq size_range. qed.
-
-lemma mem_rangeset m n i : i \in rangeset m n <=> m <= i && i < n.
-proof. by rewrite mem_oflist mem_range. qed.
+require import LibExt.
 
 clone import NominalGroup.NominalGroup as N.
 

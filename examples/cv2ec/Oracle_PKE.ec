@@ -10,19 +10,8 @@ require import AllCore List Distr DBool DInterval.
 require (*--*) LorR Hybrid.
 (*-- *) import StdOrder.RealOrder.
 
-type ('a, 'b) sum = [Left of 'a | Right of 'b].
+require import LibExt.
 
-op is_left ['a 'b] (s : ('a,'b) sum) =
-  with s = Left _ => true
-  with s = Right _ => false.
-
-op left ['a 'b] (s : ('a,'b) sum) =
-  with s = Left x => x
-  with s = Right _ => witness.
-
-op right ['a 'b] (s : ('a,'b) sum) =
-  with s = Right x => x
-  with s = Left _ => witness.
 
 type pkey, skey, plaintext, ciphertext.
 
