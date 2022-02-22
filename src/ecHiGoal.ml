@@ -815,30 +815,44 @@ let process_rewrite1_r ttenv ?target ri tc =
       let subenv = EcEnv.Memory.push_active mem env in
       let equiv = EcFol.destr_equivF lem.ax_spec in
       let proc = EcEnv.Fun.by_xpath equiv.ef_fl env in
-      let _args =
+      let args, _ =
         let ue = EcUnify.UniEnv.create (Some []) in
-        EcTyping.transexpcast subenv `InProc ue proc.f_sig.fs_arg args in
-      let _res =
+        EcTyping.trans_args subenv ue (loc args) proc.f_sig (unloc args) in
+      let res =
         let ue = EcUnify.UniEnv.create (Some []) in
         EcTyping.transexpcast subenv `InProc ue proc.f_sig.fs_ret res in
 
-      assert (is_var _res or is_tuple_var _res);
       let lv =
-        if is_var _res then EcModules.LvVar (destr_var _res, e_ty _res)
-        else
-          let vs = destr_tuple_var _res in
-          EcModules.LvTuple []
-          (** _res is an expr, we need to break it down into an (expr * ty) list
-              How do we type the individual expressions in the context of the program? *)
-          (* List.map (fun v -> e_var v ??) *)
+        let as_pvar e =
+          match e.e_node with
+          | Evar pv -> (pv, e_ty e)
+          | _ -> assert false in
+
+        match res.e_node with
+        | Evar pv ->
+            EcModules.LvVar (pv, e_ty res)
+        | Etuple pvs ->
+           EcModules.LvTuple (List.map as_pvar pvs)
+        | _ -> assert false
       in
 
-      let pre ml mr  = f_eq (EcFol.form_of_expr ml _args) (EcFol.form_of_expr mr _args) in
-      let post ml mr = f_eq (EcFol.form_of_expr ml _res)  (EcFol.form_of_expr mr _res) in
-      let progl = EcModules.s_call (Some lv, equiv.ef_fl, [_args]) in (** This is not doing the right thing! *)
-      let profr = EcModules.s_call (Some lv, equiv.ef_fr, [_args]) in (** This is not doing the right thing! *)
+      let prpo ml mr =
+        let pr =
+          f_eq
+            (EcFol.form_of_expr ml (e_tuple args))
+            (EcFol.form_of_expr mr (e_tuple args))
+        and po =
+          f_eq (EcFol.form_of_expr ml res)  (EcFol.form_of_expr mr res)
+        in (pr, po) in
 
-      t_id tc
+      let progl = EcModules.s_call (Some lv, equiv.ef_fl, args) in
+      let progr = EcModules.s_call (Some lv, equiv.ef_fr, args) in
+
+      EcPhlTrans.t_equivS_trans
+        (EcMemory.memtype mem, progl)
+        (prpo (EcMemory.memory goal.es_ml) (EcMemory.memory mem))
+        (prpo (EcMemory.memory mem) (EcMemory.memory goal.es_mr))
+        tc
 
 (* -------------------------------------------------------------------- *)
 let process_rewrite1 ttenv ?target ri tc =

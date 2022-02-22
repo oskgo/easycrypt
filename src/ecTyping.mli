@@ -199,6 +199,14 @@ val trans_topmsymbol : env -> pmsymbol located -> mpath
 val trans_msymbol    : env -> pmsymbol located -> mpath * module_sig
 val trans_gamepath   : env -> pgamepath -> xpath
 
+val trans_args :
+     EcEnv.env
+  -> EcUnify.unienv
+  -> EcLocation.t
+  -> EcModules.funsig
+  -> pexpr list
+  -> expr list * EcTypes.ty
+
 (* -------------------------------------------------------------------- *)
 type restriction_who =
 | RW_mod of EcPath.mpath
