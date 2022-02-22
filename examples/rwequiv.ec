@@ -28,6 +28,10 @@ equiv eq': BiSample.sample ~ Prod.sample: ={arg} ==> ={res}.
 proof.
 proc.
 rewrite equiv [{1} 1 eq (dt,du) (t,u)].
++ admit (* use a fresh memory on the right *).
++ admit (* use a fresh memory on the right *).
++ admit.
+
 (**                 s  _  l   arg     res   **)
 transitivity {1} { (t, u) <@ BiSample.sample(dt, du); }
 (**           s      res        LHS of l    **)

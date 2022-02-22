@@ -848,10 +848,15 @@ let process_rewrite1_r ttenv ?target ri tc =
       let progl = EcModules.s_call (Some lv, equiv.ef_fl, args) in
       let progr = EcModules.s_call (Some lv, equiv.ef_fr, args) in
 
+      (* TODO: This works only for side {1} *)
       EcPhlTrans.t_equivS_trans
         (EcMemory.memtype mem, progl)
+        (* TODO: the below is where the issue arises *)
+        (* The right-hand side memory should be a reference to some
+           other copy of the same memory, named {2}. Check out how
+           transitivity processes its input to figure this out. **)
         (prpo (EcMemory.memory goal.es_ml) (EcMemory.memory mem))
-        (prpo (EcMemory.memory mem) (EcMemory.memory goal.es_mr))
+        (goal.es_pr, goal.es_po)
         tc
 
 (* -------------------------------------------------------------------- *)
