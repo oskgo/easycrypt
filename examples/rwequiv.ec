@@ -27,7 +27,7 @@ proof. admitted.
 equiv eq': BiSample.sample ~ Prod.sample: ={arg} ==> ={res}.
 proof.
 proc.
-(** rewrite equiv [{1} 1 eq (dt,du) (t,u)]. **)
+rewrite equiv [{1} 1 eq (dt,du) (t,u)].
 (**                 s  _  l   arg     res   **)
 transitivity {1} { (t, u) <@ BiSample.sample(dt, du); }
 (**           s      res        LHS of l    **)

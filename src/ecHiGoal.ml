@@ -821,6 +821,23 @@ let process_rewrite1_r ttenv ?target ri tc =
       let _res =
         let ue = EcUnify.UniEnv.create (Some []) in
         EcTyping.transexpcast subenv `InProc ue proc.f_sig.fs_ret res in
+
+      assert (is_var _res or is_tuple_var _res);
+      let lv =
+        if is_var _res then EcModules.LvVar (destr_var _res, e_ty _res)
+        else
+          let vs = destr_tuple_var _res in
+          EcModules.LvTuple []
+          (** _res is an expr, we need to break it down into an (expr * ty) list
+              How do we type the individual expressions in the context of the program? *)
+          (* List.map (fun v -> e_var v ??) *)
+      in
+
+      let pre ml mr  = f_eq (EcFol.form_of_expr ml _args) (EcFol.form_of_expr mr _args) in
+      let post ml mr = f_eq (EcFol.form_of_expr ml _res)  (EcFol.form_of_expr mr _res) in
+      let progl = EcModules.s_call (Some lv, equiv.ef_fl, [_args]) in (** This is not doing the right thing! *)
+      let profr = EcModules.s_call (Some lv, equiv.ef_fr, [_args]) in (** This is not doing the right thing! *)
+
       t_id tc
 
 (* -------------------------------------------------------------------- *)
