@@ -857,7 +857,7 @@ let process_rewrite1_r ttenv ?target ri tc =
            (goal.es_pr, goal.es_po)
            tc in
 
-      let p = process_tfocus tc (Some [Some 4,None], None) in
+      let p = process_tfocus tc (Some [Some 4,Some 4], None) in
       let tc =
         t_onselect
           p
@@ -870,14 +870,14 @@ let process_rewrite1_r ttenv ?target ri tc =
       (* We want a call with lemma;
          We really need an additional interface between parsing and tactic works *)
       let p = process_tfocus tc (Some [Some 6,Some 6], None) in
+      let pterm =
+        { fp_mode = `Implicit;
+          fp_head = FPNamed (name, None);
+          fp_args = []; } in
       let tc =
-        t_onselect
-          p
-          (EcPhlCall.t_call None lem.ax_spec)
-          tc in
-
+        t_onselect p (EcPhlCall.process_call None pterm) tc in
+      
       tc
-
 
 (* -------------------------------------------------------------------- *)
 let process_rewrite1 ttenv ?target ri tc =

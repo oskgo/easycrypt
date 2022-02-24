@@ -33,8 +33,7 @@ rewrite equiv [{1} 1 eq (dt,du) (t,u)].
 + by inline *; auto.
 + by move=> /> &2; exists dt{2} du{2}.
 + done.
-+ exact: eq. (* This one should be automated *)
-+ done.      (* This one as well *)
++ done.
 (* This is the end of the tactic's work *)
 (* unless we want to re-inline the RHS *)
 inline *; wp.
