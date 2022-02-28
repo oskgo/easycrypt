@@ -29,6 +29,24 @@ lemma omap_some (ox : 'a option) (y : 'b) (f : 'a -> 'b) :
 proof. by case: ox => /#. qed.
 
 (* List.ec *)
+
+lemma subseq_map (s1 s2 : 'a list) (f : 'a -> 'b) : 
+  subseq s1 s2 => subseq (map f s1) (map f s2).
+proof. 
+elim: s2 s1 => [|y s2 IHs2] [|x s1] //= /IHs2. 
+smt(subseq_refl subseq_cons subseq_trans).
+qed.
+
+lemma subseq_uniq (s1 s2 : 'a list) : 
+  subseq s1 s2 => uniq s2 => uniq s1.
+proof. 
+elim: s2 s1 => [|y s2 IHs2] [|x s1] //=; smt(subseq_mem). 
+qed.
+
+lemma subseq_map_uniq (s1 s2 : 'a list) (f : 'a -> 'b) : 
+  subseq s1 s2 => uniq (map f s2) => uniq (map f s1).
+proof. by move/(subseq_map _ _ f); apply: subseq_uniq. qed.
+
 lemma uniq_mem_rem (y x : 'a) (s : 'a list) : 
   uniq s => y \in rem x s <=> y \in s /\ y <> x.
 proof. by elim: s => //= /#. qed.
@@ -40,6 +58,10 @@ proof. by rewrite /card -(perm_eq_size _ _ (oflistK s)) size_undup. qed.
 
 lemma uniq_card_oflist (s : 'a list) : uniq s => card (oflist s) = size s.
 proof. by rewrite /card => /oflist_uniq/perm_eq_size => <-. qed.
+
+lemma card_iota (n : int) : 0 <= n => card (oflist (iota_ 1 n)) = n.
+proof. by move=> n_ge0; rewrite uniq_card_oflist ?iota_uniq size_iota /#. qed.
+
 
 op rangeset (m n : int) = oflist (range m n).
 
@@ -57,6 +79,11 @@ proof.
 move=> fin_d1 fin_d2; rewrite dprod_dlet finite_dlet // => x x_d1.
 by apply finite_dlet => // y y_d2; apply finite_dunit.
 qed.
+
+import MRat.
+lemma perm_eq_drat ['a] (s1 s2 : 'a list) : 
+  perm_eq s1 s2 => drat s1 = drat s2.
+proof. by move => P; apply/eq_dratP/perm_eq_ratl. qed.
 
 (* DInterval.ec *)
 lemma finite_dinter (a b : int) : is_finite (support [a..b]).
