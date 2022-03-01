@@ -849,13 +849,20 @@ let process_rewrite1_r ttenv ?target ri tc =
       let progr = EcModules.s_call (Some lv, equiv.ef_fr, args) in
 
       (* TODO: This works only for side {1} *)
-      (* TODO: This feels like breathing manually when there's "process_chain" *)
+      (* Should we use - for the other direction, and use symmetry to implement it? *)
       let tc =
         EcPhlTrans.t_equivS_trans
            (EcMemory.memtype mem, progl)
            (prpo (EcMemory.memory goal.es_ml) mright)
            (goal.es_pr, goal.es_po)
            tc in
+
+      let p = process_tfocus tc (Some [Some 3, Some 3], None) in
+      let tc =
+        t_onselect
+          p
+          (t_seq (EcPhlInline.process_inline (`All (None, None))) EcPhlAuto.t_auto)
+          tc in
 
       let p = process_tfocus tc (Some [Some 4,Some 4], None) in
       let tc =
@@ -867,17 +874,15 @@ let process_rewrite1_r ttenv ?target ri tc =
              (goal.es_pr, goal.es_po))
           tc in
 
-      (* We want a call with lemma;
-         We really need an additional interface between parsing and tactic works *)
       let p = process_tfocus tc (Some [Some 6,Some 6], None) in
       let pterm =
         { fp_mode = `Implicit;
           fp_head = FPNamed (name, None);
           fp_args = []; } in
       let tc =
-        t_onselect p (EcPhlCall.process_call None pterm) tc in
-      
-      tc
+        t_onselect p (t_seq (EcPhlCall.process_call None pterm) process_done) tc in
+
+      t_onall process_trivial tc
 
 (* -------------------------------------------------------------------- *)
 let process_rewrite1 ttenv ?target ri tc =

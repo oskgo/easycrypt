@@ -27,31 +27,27 @@ proof. admitted.
 equiv eq': BiSample.sample ~ Prod.sample: ={arg} ==> ={res}.
 proof.
 proc.
-rewrite equiv [{1} 1 eq (dt,du) (t,u)].
-+ by move=> /> &1; exists dt{1} du{1}.
-+ done.
-+ by inline *; auto.
-+ by move=> /> &2; exists dt{2} du{2}.
-+ done.
-+ done.
-(* This is the end of the tactic's work *)
-(* unless we want to re-inline the RHS *)
-inline *; wp.
-conseq (: ={tu})=> [/#|].
-by sim.
+transitivity {1} { (t,u) <@ BiSample.sample(dt,du); }
+  (={dt,du} ==> ={t,u})
+  (={dt,du} ==> (t,u){1} = tu{2});
+  [ 4:transitivity {1} { (t,u) <@ Prod.sample(dt,du); }
+        (={dt,du} ==> ={t,u})
+        (={dt,du} ==> (t,u){1} = tu{2})];
+  [   3:by inline *; auto
+  | 2,5:done
+  |   6:by call eq ].
++ smt().
++ smt().
+by inline *; auto=> /#.
 qed.
 
 equiv eq2: BiSample.sample ~ Prod.sample: ={arg} ==> ={res}.
 proof.
 proc.
-rewrite equiv[{1} 1 eq (dt, du) (t, u)].
-
-
- admitted.
-
-
-
-(** seq 1: (={tout}). by sim.
-    seq 2: (={tout} avec substitution); last by sim.
-    transitivity ...
-**)
+rewrite equiv [{1} 1 eq (dt,du) (t,u)].
++ by move=> /> &1; exists dt{1} du{1}.
++ by move=> /> &2; exists dt{2} du{2}.
+inline *; wp.
+conseq (: ={tu})=> [/#|].
+by sim.
+qed.
