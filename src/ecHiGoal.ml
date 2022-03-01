@@ -857,13 +857,6 @@ let process_rewrite1_r ttenv ?target ri tc =
            (goal.es_pr, goal.es_po)
            tc in
 
-      let p = process_tfocus tc (Some [Some 3, Some 3], None) in
-      let tc =
-        t_onselect
-          p
-          (t_seq (EcPhlInline.process_inline (`All (None, None))) EcPhlAuto.t_auto)
-          tc in
-
       let p = process_tfocus tc (Some [Some 4,Some 4], None) in
       let tc =
         t_onselect
@@ -881,6 +874,13 @@ let process_rewrite1_r ttenv ?target ri tc =
           fp_args = []; } in
       let tc =
         t_onselect p (t_seq (EcPhlCall.process_call None pterm) process_done) tc in
+
+      let p = process_tfocus tc (Some [Some 3, Some 3], None) in
+      let tc =
+        t_onselect
+          p
+          (t_seq (EcPhlInline.process_inline (`All (None, None))) EcPhlAuto.t_auto)
+          tc in
 
       t_onall process_trivial tc
 
