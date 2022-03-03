@@ -6,6 +6,10 @@ import DBool.Biased.
 import StdOrder.RealOrder.
 import RField.
 
+theory CDH_RSR.
+
+clone import NominalGroup.NominalGroup as N.
+
 (* rangeset - move into Fset.ec *)
 
 lemma uniq_card_oflist (s : 'a list) : uniq s => card (oflist s) = size s.
@@ -18,11 +22,6 @@ proof. by rewrite uniq_card_oflist ?range_uniq size_range. qed.
 
 lemma mem_rangeset m n i : i \in rangeset m n <=> m <= i && i < n.
 proof. by rewrite mem_oflist mem_range. qed.
-
-clone import NominalGroup.NominalGroup as N.
-
-op e : Z.
-axiom e_EU : e \in EU.
 
 op elog (x : G) = choiceb (fun a => a \in EU /\ x = exp g a) e.
 
@@ -123,10 +122,10 @@ op q_ob  : {int | 0 <= q_ob}  as q_ob_ge0.
 op q_ddh : {int | 1 <= q_ddh} as q_ddh_ge1.
 
 module type CDH_RSR_Oracles = {
-  proc oA  (i : int) : G
-  proc oB  (j : int) : G
-  proc oa  (j : int) : Z
-  proc ob  (j : int) : Z
+  proc oA  (i : int)          : G
+  proc oB  (j : int)          : G
+  proc oa  (j : int)          : Z
+  proc ob  (j : int)          : Z
   proc ddh (m : G, i j : int) : bool
 }.
 
@@ -158,15 +157,15 @@ module Count (O : CDH_RSR_Oracles) = {
     var r;
 
     ca <- ca + 1;
-    r <@ O.oa(i);
+    r  <@ O.oa(i);
     return r;
   }
 
-  proc ob (i : int) = {
+  proc ob (j : int) = {
     var r;
 
     cb <- cb + 1;
-    r <@ O.ob(i);
+    r  <@ O.ob(j);
     return r;
   }
 
@@ -177,7 +176,7 @@ module Count (O : CDH_RSR_Oracles) = {
     var r;
 
     cddh <- cddh + 1;
-    r <@ O.ddh(m, i, j);
+    r    <@ O.ddh(m, i, j);
     return r;
   }
 }.
@@ -215,7 +214,7 @@ cryptoprim.pdf *)
 clone import FullRO as FROZ with
   type in_t    <- int,
   type out_t   <- Z,
-  op dout      <- fun _ => dZ,
+  op   dout    <- fun _ => dZ,
   type d_in_t  <- unit,
   type d_out_t <- bool.
 
@@ -293,7 +292,7 @@ module G2 : CDH_RSR_Oracles = {
     a <- e;
     if (0 <= i < na) {
       ca <- i :: ca;
-      a <@ OAZ.get(i);
+      a  <@ OAZ.get(i);
     }
     return a;
   }
@@ -304,7 +303,7 @@ module G2 : CDH_RSR_Oracles = {
     b <- e;
     if (0 <= j < nb) {
       cb <- j :: cb;
-      b <@ OBZ.get(j);
+      b  <@ OBZ.get(j);
     }
     return b;
   }
@@ -347,7 +346,7 @@ module G (OA : FROZ.RO, OB : FROZ.RO) : CDH_RSR_Oracles = {
     a <- e;
     if (0 <= i < na) {
       ca <- i :: ca;
-      a <@ OA.get(i);
+      a  <@ OA.get(i);
     }
     return a;
   }
@@ -358,7 +357,7 @@ module G (OA : FROZ.RO, OB : FROZ.RO) : CDH_RSR_Oracles = {
     b <- e;
     if (0 <= j < nb) {
       cb <- j :: cb;
-      b <@ OB.get(j);
+      b  <@ OB.get(j);
     }
     return b;
   }
@@ -402,10 +401,10 @@ module G (OA : FROZ.RO, OB : FROZ.RO) : CDH_RSR_Oracles = {
 
 (* G' behaves like G, but samples invertible exponents (i.e. from EU *)
 clone import FullRO as FROEU with
-  type in_t   <- int,
-  type out_t  <- Z,
-  op dout     <- fun _ => duniform (elems EU),
-  type d_in_t <- unit,
+  type in_t    <- int,
+  type out_t   <- Z,
+  op   dout    <- fun _ => duniform (elems EU),
+  type d_in_t  <- unit,
   type d_out_t <- bool.
 
 clone FROEU.MkRO as RAEU.
@@ -416,10 +415,10 @@ module OBEU = RBEU.RO.
 module G' = G(OAEU, OBEU).
 
 clone import Split as FROEU_S with
-  type in_t   <- int,
-  type out_t  <- Z,
-  op dout     <- fun _ => duniform (elems EU),
-  type d_in_t <- Z * Z,
+  type in_t    <- int,
+  type out_t   <- Z,
+  op   dout    <- fun _ => duniform (elems EU),
+  type d_in_t  <- Z * Z,
   type d_out_t <- bool.
 
 (* We could do with only 2 oracles for sampling A in EU for our proofs but,
@@ -484,7 +483,7 @@ module S = {
     if (0 <= i < na) {
       if (! nth false ia i){
         ca <- i :: ca;
-        a <@ OAEU.get(i);
+        a  <@ OAEU.get(i);
       }
     }
     return a;
@@ -497,7 +496,7 @@ module S = {
     if (0 <= j < nb) {
       if (! nth false ib j){
         cb <- j :: cb;
-        b <@ OBEU.get(j);
+        b  <@ OBEU.get(j);
       }
     }
     return b;
@@ -508,7 +507,7 @@ module S = {
 
     ga <- exp g e;
     if (0 <= i < na) {
-      a <@ OAEU.get(i);
+      a  <@ OAEU.get(i);
       ga <- if nth false ia i then gx ^ a else exp g a;
     }
     return ga;
@@ -519,7 +518,7 @@ module S = {
 
     gb <- exp g e;
     if (0 <= j < nb) {
-      b <@ OBEU.get(j);
+      b  <@ OBEU.get(j);
       gb <- if nth false ib j then gy ^ b else exp g b;
     }
     return gb;
@@ -555,7 +554,7 @@ module S = {
 module GameS (A : Adversary) = {
   module O' = Count(S)
 
-  proc main(gx : G, gy : G) = {
+  proc main (gx : G, gy : G) = {
     var r;
 
     S.init(gx, gy);
@@ -567,17 +566,17 @@ module GameS (A : Adversary) = {
 
 (* adversary against CDH problem for nominal groups *)
 module B (A : Adversary) : NCDH.Adversary = {
-  proc solve(gx gy : G) : G = {
+  proc solve (gx gy : G) : G = {
     GameS(A).main(gx, gy);
     return S.m_crit;
   }
 }.
 
 clone import FullRO as FROG with
-  type in_t   <- int,
-  type out_t  <- G,
-  op dout     <- fun _ => dmap (duniform (elems EU)) (exp g),
-  type d_in_t <- unit,
+  type in_t    <- int,
+  type out_t   <- G,
+  op   dout    <- fun _ => dmap (duniform (elems EU)) (exp g),
+  type d_in_t  <- unit,
   type d_out_t <- bool.
 
 clone FROG.MkRO as R1G.
@@ -605,9 +604,9 @@ declare axiom A_ll : forall (O <: CDH_RSR_Oracles{A}),
   islossless O.ddh =>
   islossless A(O).guess.
 
-declare axiom A_bound : forall (O <: CDH_RSR_Oracles{A}),
+declare axiom A_bound : forall (O <: CDH_RSR_Oracles{Count, A}),
   hoare [A(Count(O)).guess :
-         Count.ca = 0 /\ Count.cb = 0 /\ Count.cddh = 0 ==>
+         Count.ca = 0     /\ Count.cb = 0     /\ Count.cddh = 0 ==>
          Count.ca <= q_oa /\ Count.cb <= q_ob /\ Count.cddh <= q_ddh].
 
 local module G1b = {
@@ -644,9 +643,9 @@ have -> : Pr[Game(G2,          A).main() @ &m : res] =
   call (: ={OAZ.m, OBZ.m, G2.ca, G2.cb}); 1..4: (by sim); 2: by auto.
   by proc; inline *; sp; if; auto.
 (* we can continue logging oa/ob queries once bad happens *)
-byequiv (_ : ={glob A} ==> ={G.bad} /\ (! G.bad{2} => ={res})) : G.bad => //;
+byequiv (: ={glob A} ==> ={G.bad} /\ (! G.bad{2} => ={res})) : G.bad => //;
 [proc; inline * | smt()].
-call (_ : G.bad, ={OAZ.m, OBZ.m, G2.ca, G2.cb, G.bad}, ={G.bad});
+call (: G.bad, ={OAZ.m, OBZ.m, G2.ca, G2.cb, G.bad}, ={G.bad});
   2..13: by (sim /> || (move => *; conseq />; islossless)).
 - by exact: A_ll.
 - proc; inline G1b.ddh G(OAZ, OBZ).ddh; sp.
@@ -669,23 +668,21 @@ qed.
 
 local clone SDist.Dist as D with
   type a <- Z
-  proof*.
-
-
+proof*.
 
 local clone D.ROM as D1 with
   type in_t    <- int,
-  op d1        <- dZ,
-  op d2        <- duniform (elems EU),
-  op N         <- na
+  op   d1      <- dZ,
+  op   d2      <- duniform (elems EU),
+  op   N       <- na
 proof* by smt(dZ_ll dEU_ll na_ge0).
 
 local clone D.ROM as D2 with
   type in_t    <- int,
-  op d1        <- dZ,
-  op d2        <- duniform (elems EU),
-  op N         <- nb
-proof * by smt(dZ_ll dEU_ll nb_ge0).
+  op   d1      <- dZ,
+  op   d2      <- duniform (elems EU),
+  op   N       <- nb
+proof* by smt(dZ_ll dEU_ll nb_ge0).
 
 local module DisA (O : FROZ.RO) = {
   module CG = Count(G(O, OBZ))
@@ -727,7 +724,7 @@ suff: `| Pr[Game(G(OAZ,  OBZ), A).main() @ &m : G.bad] -
          Pr[Game(G(OAEU, OBEU), A).main() @ &m : G.bad] | <=
       nb%r * sdist dZ (duniform (elems EU)) by smt().
 split.
-- have -> : Pr[Game(G(OAZ,  OBZ), A).main() @ &m : G.bad] =
+- have -> : Pr[Game(G(OAZ, OBZ), A).main() @ &m : G.bad] =
             Pr[D1.R1.MainD(DisA, D1.R1.RO).distinguish() @ &m : res].
   + byequiv => //; proc; inline *; auto.
     call (: ={m}(OAZ, D1.R1.RO) /\ ={OBZ.m, G2.ca, G2.cb, G.bad}); 1..5: by sim.
@@ -737,8 +734,9 @@ split.
   + byequiv => //; proc; inline *; auto.
     call (: ={m}(OAEU, D1.R2.RO) /\ ={OBZ.m, G2.ca, G2.cb, G.bad}); 1..5: by sim.
     by auto.
-  apply (D1.sdist_ROM DisA _ &m _) => // O. 
-    by move => get_ll; islossless; apply (A_ll (Count(G(O, RBZ.RO)))); islossless.
+  apply (D1.sdist_ROM DisA _ &m _) => // O.
+    move => get_ll; islossless.
+    by apply (A_ll (Count(G(O, RBZ.RO)))); islossless.
   proc; inline *; auto.
   conseq (:_ ==> D1.Wrap.dom \subset rangeset 0 na) => [_ _ I Isub|].
   + apply (StdOrder.IntOrder.ler_trans (card (rangeset 0 na)));
@@ -756,15 +754,16 @@ split.
 - have -> : Pr[Game(G(OAEU, OBZ), A).main() @ &m : G.bad] =
             Pr[D2.R1.MainD(DisB, D2.R1.RO).distinguish() @ &m : res].
   + byequiv => //; proc; inline *; auto.
-    call (: ={m}(OBZ, D2.R1.RO) /\ ={OAEU.m, G2.ca, G2.cb, G.bad}); 1..5: by sim.
-    by auto.
+    call (: ={m}(OBZ, D2.R1.RO) /\ ={OAEU.m, G2.ca, G2.cb, G.bad});
+      1..5: (by sim); by auto.
   have -> : Pr[Game(G(OAEU, OBEU), A).main() @ &m : G.bad] =
             Pr[D2.R1.MainD(DisB, D2.R2.RO).distinguish() @ &m : res].
   + byequiv => //; proc; inline *; auto.
-    call (: ={m}(OBEU, D2.R2.RO) /\ ={OAEU.m, G2.ca, G2.cb, G.bad}); 1..5: by sim.
-    by auto.
-  apply (D2.sdist_ROM DisB _ &m _) => // O. 
-    by move => get_ll; islossless; apply (A_ll (Count(G(OAEU,O)))); islossless.
+    call (: ={m}(OBEU, D2.R2.RO) /\ ={OAEU.m, G2.ca, G2.cb, G.bad});
+      1..5: (by sim); by auto.
+  apply (D2.sdist_ROM DisB _ &m _) => // O.
+    move => get_ll; islossless;
+    by apply (A_ll (Count(G(OAEU,O)))); islossless.
   proc; inline*; auto.
   conseq (:_ ==> D2.Wrap.dom \subset rangeset 0 nb) => [_ _ I Isub|].
   + apply (StdOrder.IntOrder.ler_trans (card (rangeset 0 nb)));
@@ -804,7 +803,7 @@ local module Gk (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i = {
     if (0 <= i < na) {
       if (i <> i_k) {
         ca <- i :: ca;
-        a <@ OA.get(i);
+        a  <@ OA.get(i);
       }
     }
     return a;
@@ -817,7 +816,7 @@ local module Gk (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i = {
     if (0 <= j < nb) {
       if (j <> j_k) {
         cb <- j :: cb;
-        b <@ OB.get(j);
+        b  <@ OB.get(j);
       }
     }
     return b;
@@ -869,7 +868,7 @@ local module Gk_bad (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i = {
     if (0 <= i < na) {
       if (i <> i_k) {
         ca <- i :: ca;
-        a <@ OA.get(i);
+        a  <@ OA.get(i);
       } else {
         query_k <- true;
       }
@@ -884,7 +883,7 @@ local module Gk_bad (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i = {
     if (0 <= j < nb) {
       if (j <> j_k) {
         cb <- j :: cb;
-        b <@ OB.get(j);
+        b  <@ OB.get(j);
       } else {
         query_k <- true;
       }
@@ -892,7 +891,7 @@ local module Gk_bad (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i = {
     return b;
   }
 
-  proc ddh(m, i, j) = {
+  proc ddh (m, i, j) = {
     var a, b, r, t;
 
     a <- e;
@@ -972,7 +971,7 @@ seq 14 : G.bad p (1%r / q_ddh%r * c) _ 0%r
                             0 <= Gk.i_k < na /\ 0 <= Gk.j_k < nb) /\
                   ! (Gk.i_k \in G2.ca) /\ ! (Gk.j_k \in G2.cb))
          (: _ ==> Count.ca <= q_oa /\ Count.cb <= q_ob /\ Count.cddh <= q_ddh);
-  [ | smt () | seq 13 : (Count.ca = 0 /\ Count.cb = 0 /\ Count.cddh = 0) | ];
+  [ | smt() | seq 13 : (Count.ca = 0 /\ Count.cb = 0 /\ Count.cddh = 0) | ];
   auto; 1: by call (A_bound (Gk_bad(OAEU, OBEU))).
   call (: Count.cddh = Gk.cddh /\ 0 <= Gk.cddh /\
           size G2.ca <= Count.ca /\ size G2.cb <= Count.cb /\
@@ -1067,13 +1066,13 @@ the resulting game as a distinguisher for Ok(OBEU) and use Ok_Okx
 again to rerandomize OBEU with respect to some value y.  Thus, we have
 the following chain of game equivalences :
 
-  Gk(OAEU,OBEU) 
+  Gk(OAEU,OBEU)
 ~ MainDO(Dk, Ok(OAEU))
-~ MainDO(Dk, Okx(OAEU)) *Ok_Okx 
+~ MainDO(Dk, Okx(OAEU)) *Ok_Okx
 ~ Gkx(OA,OB)
-~ MainDO(Dkx, Ok(OBEU))   
-~ MainDO(Dkx, Okx(OBEU)) *Ok_Okx 
-~ Gkxy(OAEU,OBEU) 
+~ MainDO(Dkx, Ok(OBEU))
+~ MainDO(Dkx, Okx(OBEU)) *Ok_Okx
+~ Gkxy(OAEU,OBEU)
 *)
 
 module type O = {
@@ -1161,7 +1160,7 @@ local module Ok (O : FROEU.RO) : O_i = {
     if (0 <= i < n) {
       if (i <> ik) {
         cs <- i :: cs;
-        a <@ O.get(i);
+        a  <@ O.get(i);
       }
     }
     return a;
@@ -1218,7 +1217,7 @@ local module Okt (O : FROEUt.ROt) : O_i = {
     if (0 <= i < n) {
       if (i <> ik) {
         cs <- i :: cs;
-        a <@ O.get(i);
+        a  <@ O.get(i);
       }
     }
     return a;
@@ -1345,7 +1344,7 @@ local module Ok2X (O0 : FROEU.RO, O1 : FROG.RO) : O_i = {
     if (0 <= i < n) {
       if (! nth false il i) {
         cs <- i :: cs;
-        a <@ O0.get(i);
+        a  <@ O0.get(i);
       }
     }
     return a;
@@ -1423,7 +1422,7 @@ local module Ok2x (O0 : FROEU.RO, O1 : FROEU.RO) : O_i = {
     if (0 <= i < n) {
       if (! nth false il i) {
         cs <- i :: cs;
-        a <@ O0.get(i);
+        a  <@ O0.get(i);
       }
     }
     return a;
@@ -1508,7 +1507,7 @@ local module Okx (O : FROEU.RO) : O_i = {
     if (0 <= i < n) {
       if (! nth false il i) {
         cs <- i :: cs;
-        a <@ O.get(i);
+        a  <@ O.get(i);
       }
     }
     return a;
@@ -1563,9 +1562,9 @@ local lemma Ok_Okx &m x y (D <: DistinguisherO_i {OEU, O0EU, O1EU, O1G, Ok}) :
   hoare [MainDO(D, Ok2x(O0EU, O1EU)).init :
          fst arg \in EU /\ snd arg \in EU ==> Ok.x \in EU] =>
   equiv [MainDO(D, Ok(OEU)).main ~ MainDO(D, Okx(OEU)).main :
-        ={arg, glob D} /\ arg{1} = (x, y) ==>
-        (is_ok Ok.il Ok.cs Ok.ik){1} => (is_ok Ok.il Ok.cs Ok.ik){2} /\
-                                        ={glob D}].
+         ={arg, glob D} /\ arg{1} = (x, y) ==>
+         (is_ok Ok.il Ok.cs Ok.ik){1} => (is_ok Ok.il Ok.cs Ok.ik){2} /\
+                                         ={glob D}].
 proof.
 move => x_EU y_EU D_ll initP.
 transitivity MainDO(D, Ok2(O0EU, O1EU)).main
@@ -1640,7 +1639,7 @@ local module GkD (OA : O, OB : FROEU.RO) = {
     if (0 <= j < nb) {
       if (j <> j_k) {
         cb <- j :: cb;
-        b <@ OB.get(j);
+        b  <@ OB.get(j);
       }
     }
     return b;
@@ -1693,9 +1692,9 @@ local module Dk (OA : O) = {
     OBEU.init();
   }
 
-  proc get_n = O.get_n
+  proc get_n  = O.get_n
   proc get_il = O.get_il
-  proc get_x = O.get_x
+  proc get_x  = O.get_x
 
   proc main () = {
     var r;
@@ -1746,13 +1745,13 @@ local module Gkx (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i_xy = {
     if (0 <= i < na) {
       if (! nth false ia i) {
         ca <- i :: ca;
-        a <@ OA.get(i);
+        a  <@ OA.get(i);
       }
     }
     return a;
   }
 
-  proc oA(i : int) = {
+  proc oA (i : int) = {
     var a;
 
     a  <- if (nth false ia i) then inv x * e else e;
@@ -1891,7 +1890,7 @@ local module GkxD (OA : FROEU.RO, OB : O) = {
 
   proc ob = OB.oZ
 
-  proc oA(i : int) = {
+  proc oA (i : int) = {
     var a;
 
     a  <- if (nth false ia i) then inv x * e else e;
@@ -1938,9 +1937,9 @@ local module Dkx (OB : O) = {
     OAEU.init();
   }
 
-  proc get_n = O.get_n
+  proc get_n  = O.get_n
   proc get_il = O.get_il
-  proc get_x = O.get_x
+  proc get_x  = O.get_x
 
   proc main () = {
     var r;
@@ -1984,13 +1983,13 @@ local module Gkxy (OA : FROEU.RO, OB : FROEU.RO) : CDH_RSR_Oracles_i_xy = {
     if (0 <= j < nb) {
       if (! nth false ib j) {
         cb <- j :: cb;
-        b <@ OB.get(j);
+        b  <@ OB.get(j);
       }
     }
     return b;
   }
 
-  proc oB(j : int) = {
+  proc oB (j : int) = {
     var b;
 
     b  <- if (nth false ib j) then inv y * e else e;
@@ -2129,7 +2128,7 @@ call (: ! nstop Gk.ia Gk.ib G2.ca G2.cb \/
 - proc; inline S.ddh Gkxy(RAEU.RO, RBEU.RO).ddh.
   sp 8 9; if; [smt() | | auto; smt()].
   seq 2 2 : (={m0, i0, j0, a, b, r0} /\ a{2} \in EU /\ b{2} \in EU /\
-             ( nstop Gk.ia Gk.ib G2.ca G2.cb){2} /\
+             (nstop Gk.ia Gk.ib G2.ca G2.cb){2} /\
              ={OAEU.m, OBEU.m, G2.ca, G2.cb} /\ ={cddh, k, ia, ib}(S, Gk) /\
              (S.gx = exp g x /\ S.gy = exp g y){1} /\
              (Gkx.x = x /\ Gkx.y = y){2} /\
@@ -2214,8 +2213,8 @@ lemma pb_bound :
 proof. smt. qed.
 
 clone import Inner as I with
-  op pa <- (1%r/(q_oa + 1)%r),
-  op pb <- (1%r/(q_ob + 1)%r),
+  op    pa       <- (1%r/(q_oa + 1)%r),
+  op    pb       <- (1%r/(q_ob + 1)%r),
   axiom pa_bound <- pa_bound, (* does anything break/change if we remove this? *)
   axiom pb_bound <- pb_bound.
 
@@ -2227,7 +2226,7 @@ suff nP : forall n, 0 <= n =>
                     (n%r / (n + 1)%r) ^ (n + 1) <=
                     ((n + 1)%r / (n + 1 + 1)%r) ^ (n + 1 + 1).
 - move => n_ge0; rewrite StdOrder.IntOrder.ler_eqVlt; move => [<- /#|mP].
-  have {mP} [q] : (exists q, m - n = q /\ 0 < q) by smt ().
+  have {mP} [q] : (exists q, m - n = q /\ 0 < q) by smt().
   have [p] : exists p, p = q - 1 by smt().
   rewrite eq_sym subr_eq => ->; rewrite subr_eq addrC.
   move => {q} [-> pP]; have {pP} pP : 0 <= p by smt().
@@ -2282,7 +2281,7 @@ qed.
 section.
 
 declare module A <: Adversary {G1, G2, G, S, Count,
-                              OAEU, OBEU, OEU, O0EU, O1EU, O1G}.
+                               OAEU, OBEU, OEU, O0EU, O1EU, O1G}.
 
 declare axiom A_ll : forall (O <: CDH_RSR_Oracles{A}),
   islossless O.oA =>
@@ -2292,9 +2291,9 @@ declare axiom A_ll : forall (O <: CDH_RSR_Oracles{A}),
   islossless O.ddh =>
   islossless A(O).guess.
 
-declare axiom A_bound : forall (O <: CDH_RSR_Oracles{A}),
+declare axiom A_bound : forall (O <: CDH_RSR_Oracles{Count, A}),
   hoare [A(Count(O)).guess :
-         Count.ca = 0 /\ Count.cb = 0 /\ Count.cddh = 0 ==>
+         Count.ca = 0     /\ Count.cb = 0     /\ Count.cddh = 0 ==>
          Count.ca <= q_oa /\ Count.cb <= q_ob /\ Count.cddh <= q_ddh].
 
 lemma G1G2_NCDH &m :
@@ -2331,3 +2330,5 @@ suff Hmax : forall (n : int),
 qed.
 
 end section.
+
+end CDH_RSR.

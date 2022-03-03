@@ -15,22 +15,26 @@ abstract theory NominalGroup.
 type G.
 type Z.
 
+(*
 clone include FinType
   with type t <- G
   rename "card" as "order"
   rename "enum" as "elems".
+*)
 
+op f     : Z.
 op g     : G.
 op ( ^ ) : G -> Z -> G.
-
 op ( * ) : Z -> Z -> Z.
 op inv   : Z -> Z.
 
-op f : Z.
 op exp (a, x) = a ^ (x * inv f).
 
 op EU : Z fset.
 op dZ : Z distr.
+
+op e : Z.
+axiom e_EU : e \in EU.
 
 axiom dZ_ll : is_lossless dZ.
 hint exact random : dZ_ll.

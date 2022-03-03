@@ -6,6 +6,10 @@ import DBool.Biased.
 import StdOrder.RealOrder.
 import RField.
 
+theory GDH_RSR.
+
+clone import NominalGroup.NominalGroup as N.
+
 (* rangeset - move into Fset.ec *)
 
 lemma uniq_card_oflist (s : 'a list) : uniq s => card (oflist s) = size s.
@@ -18,11 +22,6 @@ proof. by rewrite uniq_card_oflist ?range_uniq size_range. qed.
 
 lemma mem_rangeset m n i : i \in rangeset m n <=> m <= i && i < n.
 proof. by rewrite mem_oflist mem_range. qed.
-
-clone import NominalGroup.NominalGroup as N.
-
-op e : Z.
-axiom e_EU : e \in EU.
 
 op elog (x : G) = choiceb (fun a => a \in EU /\ x = exp g a) e.
 
@@ -875,9 +874,6 @@ module O1G = R1G.RO.
 
 op DELTA = (na + nb)%r * sdist dZ (duniform (elems EU)).
 
-axiom dZ_ll : is_lossless dZ.
-hint exact random : dZ_ll.
-
 lemma dEU_ll : is_lossless (duniform (elems EU)).
 proof. by smt(duniform_ll e_EU). qed.
 hint exact random : dEU_ll.
@@ -901,14 +897,12 @@ declare axiom A_ll : forall (O <: GDH_RSR_Oracles{A}),
   islossless O.ddhgen =>
   islossless A(O).guess.
 
-declare axiom A_bound : forall (O <: GDH_RSR_Oracles{A}),
+declare axiom A_bound : forall (O <: GDH_RSR_Oracles{Count, A}),
   hoare [A(Count(O)).guess :
-         Count.ca = 0 /\ Count.cb = 0 /\
-         Count.cddhma = 0 /\ Count.cddhmb = 0 /\
-         Count.cddhm = 0 /\ Count.cddhgen = 0 ==>
-         Count.ca <= q_oa /\ Count.cb <= q_ob /\
-         Count.cddhma <= q_ddhma /\ Count.cddhmb <= q_ddhmb /\
-         Count.cddhm <= q_ddhm /\ Count.cddhgen <= q_ddhgen].
+         Count.ca      = 0       /\ Count.cb      = 0 /\
+         Count.cddhma  = 0       /\ Count.cddhmb  = 0 ==>
+         Count.ca     <= q_oa    /\ Count.cb     <= q_ob /\
+         Count.cddhma <= q_ddhma /\ Count.cddhmb <= q_ddhmb].
 
 local module G1b = {
   import var G2
@@ -1643,7 +1637,7 @@ call (: ={OAEU.m, OBEU.m, G2.ca, G2.cb, glob G, glob Gs} /\
             (forall r, r \in OAEU.m => oget (OAEU.m.[r]) \in EU){2} /\
             (forall r, r \in OBEU.m => oget (OBEU.m.[r]) \in EU){2} /\
             ={m0, j'0, i0, j0, r0, b', a, b} /\ b'{1} \in EU /\ a{1} \in EU);
-    1: by inline *; auto; smt(get_setE supp_duniform).
+    1: by inline *; auto; smt(N.dZ_ll get_setE supp_duniform).
   inline *; auto => /> &2 _ _ b'EU aEU.
   by smt(expM exp_inj mulA mulC powM pow_inv_f).
 - proc; inline Gs(OAEU, OBEU).ddhgen G''(OAEU, OBEU).ddhgen.
@@ -3689,14 +3683,12 @@ declare axiom A_ll : forall (O <: GDH_RSR_Oracles{A}),
   islossless O.ddhgen =>
   islossless A(O).guess.
 
-declare axiom A_bound : forall (O <: GDH_RSR_Oracles{A}),
+declare axiom A_bound : forall (O <: GDH_RSR_Oracles{Count, A}),
   hoare [A(Count(O)).guess :
-         Count.ca = 0 /\ Count.cb = 0 /\
-         Count.cddhma = 0 /\ Count.cddhmb = 0 /\
-         Count.cddhm = 0 /\ Count.cddhgen = 0 ==>
-         Count.ca <= q_oa /\ Count.cb <= q_ob /\
-         Count.cddhma <= q_ddhma /\ Count.cddhmb <= q_ddhmb /\
-         Count.cddhm <= q_ddhm /\ Count.cddhgen <= q_ddhgen].
+         Count.ca      = 0       /\ Count.cb      = 0 /\
+         Count.cddhma  = 0       /\ Count.cddhmb  = 0 ==>
+         Count.ca     <= q_oa    /\ Count.cb     <= q_ob /\
+         Count.cddhma <= q_ddhma /\ Count.cddhmb <= q_ddhmb].
 
 lemma G1G2_NCDH &m :
   `| Pr[Game(G1,A).main() @ &m : res] - Pr[ Game(G2,A).main() @ &m : res] | <=
@@ -3733,3 +3725,5 @@ suff Hmax : forall (n : int),
 qed.
 
 end section.
+
+end GDH_RSR.
